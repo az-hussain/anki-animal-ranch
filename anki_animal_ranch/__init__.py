@@ -16,7 +16,7 @@ setup_logging()
 logger = get_logger(__name__)
 
 # Version
-__version__ = "0.2.1"
+__version__ = "0.2.4"
 
 # Global reference to the main window
 _main_window = None

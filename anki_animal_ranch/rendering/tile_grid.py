@@ -290,6 +290,12 @@ class TileGrid:
                 if tile.building_id == building_id:
                     tile.building_id = None
     
+    def clear_all_buildings(self) -> None:
+        """Remove all building references from all tiles."""
+        for row in self._tiles:
+            for tile in row:
+                tile.building_id = None
+    
     # =========================================================================
     # Zone Management
     # =========================================================================

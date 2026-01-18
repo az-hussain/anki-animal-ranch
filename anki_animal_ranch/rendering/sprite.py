@@ -355,8 +355,49 @@ class TileSprite(Sprite):
     """
     Specialized sprite for ground tiles.
     
-    Tiles are rendered as isometric diamonds.
+    Tiles are rendered as isometric diamonds with season-aware colors and decorations.
     """
+    
+    # Seasonal grass colors
+    SEASONAL_GRASS = {
+        'spring': QColor(90, 140, 90),    # Fresh green
+        'summer': QColor(85, 135, 85),    # Slightly darker green
+        'fall': QColor(160, 130, 70),     # Yellow-orange
+        'winter': QColor(220, 225, 230),  # Snowy white
+    }
+    
+    # Seasonal decoration colors
+    SEASONAL_FLOWERS = {
+        'spring': [
+            QColor(255, 200, 100),  # Yellow
+            QColor(255, 150, 180),  # Pink
+            QColor(200, 150, 255),  # Lavender
+            QColor(255, 255, 255),  # White
+        ],
+        'summer': [
+            QColor(255, 200, 100),  # Yellow
+            QColor(255, 100, 100),  # Red
+            QColor(255, 150, 50),   # Orange
+            QColor(255, 255, 150),  # Light yellow
+        ],
+        'fall': [],  # No flowers in fall
+        'winter': [],  # No flowers in winter
+    }
+    
+    # Fall leaf colors
+    LEAF_COLORS = [
+        QColor(180, 80, 40),    # Red-brown
+        QColor(200, 120, 50),   # Orange
+        QColor(180, 150, 50),   # Yellow-brown
+        QColor(150, 70, 40),    # Dark red
+    ]
+    
+    # Winter snow patch colors
+    SNOW_COLORS = [
+        QColor(255, 255, 255),    # Pure white
+        QColor(240, 245, 250),    # Slight blue tint
+        QColor(230, 235, 240),    # Darker snow
+    ]
     
     def __init__(
         self,
@@ -378,9 +419,106 @@ class TileSprite(Sprite):
         self.grid_y = grid_y
         self._show_border = False  # Hide grid lines by default
         self._is_locked = False  # Whether tile is in a locked zone
+        self._season = 'summer'  # Current season
+        
+        # Generate deterministic random decorations based on position
+        self._base_seed = self.grid_x * 1000 + self.grid_y + 42
+        self._decorations = self._generate_decorations()
         
         # Tile-specific placeholder
         self.set_placeholder(QColor(90, 140, 90), "diamond")  # Grass green
+    
+    @property
+    def season(self) -> str:
+        return self._season
+    
+    @season.setter
+    def season(self, value: str) -> None:
+        if self._season != value:
+            self._season = value
+            self._decorations = self._generate_decorations()
+            self.update()
+    
+    def _generate_decorations(self) -> list[dict]:
+        """Generate random decorations for this tile based on position and season."""
+        import random
+        
+        rng = random.Random(self._base_seed)
+        decorations = []
+        
+        # 30% chance of having any decorations
+        if rng.random() > 0.30:
+            return decorations
+        
+        season = self._season
+        
+        if season in ['spring', 'summer']:
+            # Spring/Summer: flowers and grass tufts
+            deco_type = rng.choice(['flowers', 'grass', 'mixed'])
+            
+            flower_colors = self.SEASONAL_FLOWERS.get(season, [])
+            if (deco_type == 'flowers' or deco_type == 'mixed') and flower_colors:
+                num_flowers = rng.randint(1, 3)
+                for _ in range(num_flowers):
+                    decorations.append({
+                        'type': 'flower',
+                        'x': rng.uniform(0.25, 0.75),
+                        'y': rng.uniform(0.3, 0.7),
+                        'color': rng.choice(flower_colors),
+                        'size': rng.uniform(2, 4),
+                    })
+            
+            if deco_type == 'grass' or deco_type == 'mixed':
+                num_tufts = rng.randint(2, 4)
+                for _ in range(num_tufts):
+                    decorations.append({
+                        'type': 'grass',
+                        'x': rng.uniform(0.2, 0.8),
+                        'y': rng.uniform(0.25, 0.75),
+                        'dark': rng.choice([True, False]),
+                    })
+        
+        elif season == 'fall':
+            # Fall: fallen leaves
+            num_leaves = rng.randint(2, 5)
+            for _ in range(num_leaves):
+                decorations.append({
+                    'type': 'leaf',
+                    'x': rng.uniform(0.2, 0.8),
+                    'y': rng.uniform(0.25, 0.75),
+                    'color': rng.choice(self.LEAF_COLORS),
+                    'rotation': rng.uniform(0, 360),
+                })
+            # Some grass tufts (brown)
+            if rng.random() > 0.5:
+                num_tufts = rng.randint(1, 2)
+                for _ in range(num_tufts):
+                    decorations.append({
+                        'type': 'dead_grass',
+                        'x': rng.uniform(0.2, 0.8),
+                        'y': rng.uniform(0.25, 0.75),
+                    })
+        
+        elif season == 'winter':
+            # Winter: snow patches and occasional bare twigs
+            num_patches = rng.randint(1, 3)
+            for _ in range(num_patches):
+                decorations.append({
+                    'type': 'snow_patch',
+                    'x': rng.uniform(0.2, 0.8),
+                    'y': rng.uniform(0.25, 0.75),
+                    'color': rng.choice(self.SNOW_COLORS),
+                    'size': rng.uniform(4, 8),
+                })
+            # Occasional bare twig
+            if rng.random() > 0.7:
+                decorations.append({
+                    'type': 'twig',
+                    'x': rng.uniform(0.3, 0.7),
+                    'y': rng.uniform(0.3, 0.7),
+                })
+        
+        return decorations
     
     @property
     def show_border(self) -> bool:
@@ -415,7 +553,7 @@ class TileSprite(Sprite):
         option: QStyleOptionGraphicsItem,
         widget: QWidget | None = None,
     ) -> None:
-        """Paint the tile with optional border and locked overlay."""
+        """Paint the tile with seasonal colors, decorations, and overlays."""
         rect = self.boundingRect()
         
         # Draw the diamond shape
@@ -427,16 +565,20 @@ class TileSprite(Sprite):
         ]
         polygon = QPolygonF(points)
         
-        # Always draw grass green base first
-        grass_color = QColor(90, 140, 90)
+        # Get seasonal grass color
+        grass_color = self.SEASONAL_GRASS.get(self._season, QColor(90, 140, 90))
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setBrush(QBrush(grass_color))
         painter.drawPolygon(polygon)
+        
+        # Draw decorations (flowers, grass tufts, leaves, snow) on top of base
+        self._draw_decorations(painter, rect)
         
         # If locked, draw semi-transparent gray overlay
         if self._is_locked:
             overlay_color = QColor(60, 60, 60, 160)  # Dark gray with 60% opacity
             painter.setBrush(QBrush(overlay_color))
+            painter.setPen(Qt.PenStyle.NoPen)
             painter.drawPolygon(polygon)
         
         # Draw border only if enabled (for placement mode)
@@ -445,6 +587,83 @@ class TileSprite(Sprite):
             painter.setPen(QPen(border_color, 1))
             painter.setBrush(Qt.BrushStyle.NoBrush)
             painter.drawPolygon(polygon)
+    
+    def _draw_decorations(self, painter: QPainter, rect: QRectF) -> None:
+        """Draw seasonal decorations on the tile."""
+        for deco in self._decorations:
+            # Convert relative position to absolute within diamond
+            rel_x = deco['x']
+            rel_y = deco['y']
+            
+            # Map to screen coordinates within the tile
+            cx = rect.width() / 2
+            cy = rect.height() / 2
+            px = cx + (rel_x - 0.5) * rect.width() * 0.5
+            py = cy + (rel_y - 0.5) * rect.height() * 0.5
+            
+            deco_type = deco['type']
+            
+            if deco_type == 'flower':
+                # Draw a small flower (colored dot with center)
+                color = deco['color']
+                size = deco['size']
+                painter.setPen(Qt.PenStyle.NoPen)
+                painter.setBrush(QBrush(color))
+                painter.drawEllipse(QPointF(px, py), size, size)
+                # Add tiny dark center
+                painter.setBrush(QBrush(QColor(80, 60, 40)))
+                painter.drawEllipse(QPointF(px, py), size * 0.3, size * 0.3)
+            
+            elif deco_type == 'grass':
+                # Draw small grass tuft (green blades)
+                dark_green = QColor(70, 120, 70)
+                light_green = QColor(110, 160, 110)
+                color = dark_green if deco['dark'] else light_green
+                painter.setPen(QPen(color, 1))
+                for offset in [-2, 0, 2]:
+                    painter.drawLine(
+                        QPointF(px + offset, py),
+                        QPointF(px + offset * 0.5, py - 4)
+                    )
+            
+            elif deco_type == 'leaf':
+                # Draw a small fallen leaf (small ellipse)
+                color = deco['color']
+                painter.setPen(Qt.PenStyle.NoPen)
+                painter.setBrush(QBrush(color))
+                # Draw leaf as small tilted ellipse
+                painter.save()
+                painter.translate(px, py)
+                painter.rotate(deco.get('rotation', 0))
+                painter.drawEllipse(QPointF(0, 0), 3, 2)
+                painter.restore()
+            
+            elif deco_type == 'dead_grass':
+                # Draw brown/yellow dead grass tuft
+                color = QColor(140, 110, 60)  # Brown-ish
+                painter.setPen(QPen(color, 1))
+                for offset in [-2, 0, 2]:
+                    painter.drawLine(
+                        QPointF(px + offset, py),
+                        QPointF(px + offset * 0.3, py - 3)
+                    )
+            
+            elif deco_type == 'snow_patch':
+                # Draw a small snow patch (white ellipse)
+                color = deco.get('color', QColor(255, 255, 255))
+                size = deco.get('size', 5)
+                painter.setPen(Qt.PenStyle.NoPen)
+                painter.setBrush(QBrush(color))
+                painter.drawEllipse(QPointF(px, py), size, size * 0.6)
+            
+            elif deco_type == 'twig':
+                # Draw a small bare twig
+                twig_color = QColor(80, 60, 40)
+                painter.setPen(QPen(twig_color, 1))
+                # Main stem
+                painter.drawLine(QPointF(px, py), QPointF(px + 2, py - 5))
+                # Small branch
+                painter.drawLine(QPointF(px + 1, py - 3), QPointF(px + 3, py - 4))
 
 
 class PlacementPreviewSprite(QGraphicsItem):

@@ -20,6 +20,7 @@ from ..core.constants import (
     TILE_WIDTH,
     ZONE_HEIGHT,
     ZONE_WIDTH,
+    Season,
 )
 from ..utils.math_utils import screen_to_grid, screen_to_world
 from .camera import Camera
@@ -111,6 +112,13 @@ class IsometricView(QGraphicsView):
         # Placement preview update timer (polls mouse position)
         self._placement_timer = QTimer(self)
         self._placement_timer.timeout.connect(self._poll_placement_position)
+        
+        # Weather system
+        self._current_season: Season = Season.SUMMER
+        self._weather_particles: list[dict] = []
+        self._weather_timer = QTimer(self)
+        self._weather_timer.timeout.connect(self._update_weather)
+        self._weather_timer.start(50)  # Update every 50ms
         
         # Configure view
         self._setup_view()
@@ -400,6 +408,142 @@ class IsometricView(QGraphicsView):
         
         # Update camera
         self._camera.update(FRAME_TIME_MS)
+    
+    # =========================================================================
+    # Weather System
+    # =========================================================================
+    
+    def set_season(self, season: Season) -> None:
+        """Update the current season, affecting tiles, background, and weather."""
+        if self._current_season == season:
+            return
+        
+        self._current_season = season
+        season_name = season.value.lower()
+        
+        # Update scene background color based on season
+        bg_colors = {
+            Season.SPRING: QColor(50, 80, 50),   # Fresh green
+            Season.SUMMER: QColor(60, 90, 60),   # Standard green
+            Season.FALL: QColor(80, 70, 50),     # Brownish
+            Season.WINTER: QColor(70, 80, 90),   # Cool gray-blue
+        }
+        self._scene.setBackgroundBrush(QBrush(bg_colors.get(season, QColor(60, 90, 60))))
+        
+        # Update all tile sprites with new season
+        if self._grid:
+            for row in self._grid._tiles:
+                for tile in row:
+                    if tile.sprite:
+                        tile.sprite.season = season_name
+        
+        # Reset weather particles for new season
+        self._weather_particles.clear()
+        
+        # Spawn initial particles for rain/snow
+        if season in [Season.SPRING, Season.WINTER]:
+            self._spawn_weather_particles(initial=True)
+        
+        logger.info(f"Season changed to {season.value}")
+        self.viewport().update()
+    
+    def _spawn_weather_particles(self, initial: bool = False) -> None:
+        """Spawn weather particles (rain for spring, snow for winter)."""
+        import random
+        
+        viewport_rect = self.viewport().rect()
+        count = 50 if initial else 3  # Spawn more initially, then trickle
+        
+        for _ in range(count):
+            if self._current_season == Season.SPRING:
+                # Rain droplet
+                particle = {
+                    'type': 'rain',
+                    'x': random.uniform(0, viewport_rect.width()),
+                    'y': random.uniform(-50, viewport_rect.height()) if initial else random.uniform(-50, 0),
+                    'speed': random.uniform(8, 12),
+                    'length': random.uniform(8, 15),
+                }
+            elif self._current_season == Season.WINTER:
+                # Snowflake
+                particle = {
+                    'type': 'snow',
+                    'x': random.uniform(0, viewport_rect.width()),
+                    'y': random.uniform(-20, viewport_rect.height()) if initial else random.uniform(-20, 0),
+                    'speed': random.uniform(1, 3),
+                    'size': random.uniform(2, 4),
+                    'drift': random.uniform(-0.5, 0.5),
+                }
+            else:
+                return
+            
+            self._weather_particles.append(particle)
+    
+    def _update_weather(self) -> None:
+        """Update weather particle positions."""
+        if self._current_season not in [Season.SPRING, Season.WINTER]:
+            return
+        
+        viewport_rect = self.viewport().rect()
+        particles_to_remove = []
+        
+        for particle in self._weather_particles:
+            if particle['type'] == 'rain':
+                # Rain falls straight down, fast
+                particle['y'] += particle['speed']
+                if particle['y'] > viewport_rect.height():
+                    particles_to_remove.append(particle)
+            
+            elif particle['type'] == 'snow':
+                # Snow drifts and falls slowly
+                particle['y'] += particle['speed']
+                particle['x'] += particle['drift']
+                if particle['y'] > viewport_rect.height():
+                    particles_to_remove.append(particle)
+        
+        # Remove off-screen particles
+        for p in particles_to_remove:
+            self._weather_particles.remove(p)
+        
+        # Spawn new particles
+        if len(self._weather_particles) < 80:
+            self._spawn_weather_particles(initial=False)
+        
+        # Trigger repaint
+        self.viewport().update()
+    
+    def drawForeground(self, painter: QPainter, rect: QRectF) -> None:
+        """Draw weather effects on top of everything."""
+        super().drawForeground(painter, rect)
+        
+        if not self._weather_particles:
+            return
+        
+        # Save painter state
+        painter.save()
+        
+        # Reset transform to draw in viewport coordinates
+        painter.resetTransform()
+        
+        for particle in self._weather_particles:
+            if particle['type'] == 'rain':
+                # Draw rain as thin blue-ish lines
+                rain_color = QColor(150, 180, 220, 180)
+                painter.setPen(QPen(rain_color, 1))
+                x, y = particle['x'], particle['y']
+                length = particle['length']
+                painter.drawLine(QPointF(x, y), QPointF(x - 1, y + length))
+            
+            elif particle['type'] == 'snow':
+                # Draw snow as white dots
+                snow_color = QColor(255, 255, 255, 220)
+                painter.setPen(Qt.PenStyle.NoPen)
+                painter.setBrush(QBrush(snow_color))
+                x, y = particle['x'], particle['y']
+                size = particle['size']
+                painter.drawEllipse(QPointF(x, y), size, size)
+        
+        painter.restore()
     
     def _handle_keyboard_pan(self) -> None:
         """Handle WASD keyboard panning."""

@@ -361,6 +361,7 @@ class MainWindow(QMainWindow):
         
         # Subscribe to production events for visual feedback
         event_bus.subscribe(Events.ANIMAL_PRODUCED, self._on_animal_produced)
+        event_bus.subscribe(Events.SEASON_CHANGED, self._on_season_changed)
         
         # Initialize the isometric view
         if self._iso_view is not None:
@@ -370,6 +371,10 @@ class MainWindow(QMainWindow):
                 zones_tall=4,
                 unlocked_zones=self.farm.unlocked_zones if self.farm else 1,
             )
+            
+            # Set initial season
+            if self.time_system:
+                self._iso_view.set_season(self.time_system.current_time.season)
             
             # If we loaded a save, recreate building/animal sprites
             if loaded is not None:
@@ -1311,6 +1316,9 @@ class MainWindow(QMainWindow):
             # Update grid to show friend's unlocked zones
             self._iso_view.grid.unlocked_zones = friend_farm.unlocked_zones
             
+            # Clear all building markers from grid (important for placement checks)
+            self._iso_view.grid.clear_all_buildings()
+            
             # Clear existing sprites
             self._clear_all_sprites()
             
@@ -1363,6 +1371,9 @@ class MainWindow(QMainWindow):
         if hasattr(self, '_home_unlocked_zones'):
             self._iso_view.grid.unlocked_zones = self._home_unlocked_zones
             self._home_unlocked_zones = None
+        
+        # Clear all building markers from grid (important for placement checks)
+        self._iso_view.grid.clear_all_buildings()
         
         # Clear and recreate sprites
         self._clear_all_sprites()
@@ -1471,6 +1482,13 @@ class MainWindow(QMainWindow):
         
         # Update UI immediately
         self._update_ui()
+    
+    def _on_season_changed(self, **kwargs) -> None:
+        """Handle season change event to update visuals."""
+        new_season = kwargs.get("new_season")
+        if new_season and self._iso_view:
+            logger.info(f"Season changed to {new_season.value}")
+            self._iso_view.set_season(new_season)
     
     def simulate_card_answer(self, ease: int = 3) -> None:
         """

@@ -2,7 +2,7 @@
     "name": "Anki Animal Ranch",
     "package": "anki_animal_ranch",
     "author": "Your Name",
-    "version": "0.2.1",
+    "version": "0.2.4",
     "homepage": "",
     "conflicts": [],
     "min_point_version": 45,
