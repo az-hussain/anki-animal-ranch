@@ -69,16 +69,16 @@ Beautify your farm with **19 decorative items**:
 
 ## 📦 Installation
 
-### Option 1: From .ankiaddon File
-1. Download the latest `anki_animal_ranch_vX.X.X.ankiaddon` file
-2. Open Anki → **Tools** → **Add-ons** → **Install from file...**
-3. Select the downloaded file
-4. Restart Anki
+### From AnkiWeb (Recommended)
+1. Open Anki
+2. Go to **Tools** → **Add-ons** → **Get Add-ons...**
+3. Enter code: **`1821134343`**
+4. Click **OK** and restart Anki
 
-### Option 2: Development Setup
+### Development Setup
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/anki-animal-ranch.git
+git clone https://github.com/azharhussain96/anki-animal-ranch.git
 cd anki-animal-ranch
 
 # Run standalone (without Anki)
