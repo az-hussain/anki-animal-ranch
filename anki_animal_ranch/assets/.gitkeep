@@ -1,0 +1,16 @@
+# This file ensures the assets directory is tracked by git.
+# Place your sprite sheets, audio files, and other assets in this directory.
+
+# Directory structure:
+# assets/
+# ├── sprites/
+# │   ├── animals/      # Animal spritesheets (chicken.png, pig.png, cow.png)
+# │   ├── buildings/    # Building sprites
+# │   ├── characters/   # Player and worker sprites
+# │   ├── effects/      # Particle effects
+# │   └── ui/           # UI elements
+# ├── tiles/            # Ground tiles (grass, dirt, water, etc.)
+# ├── audio/
+# │   ├── music/        # Background music
+# │   └── sfx/          # Sound effects
+# └── fonts/            # Custom fonts

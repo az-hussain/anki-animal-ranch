@@ -1,0 +1,11 @@
+{
+    "name": "Anki Animal Ranch",
+    "package": "anki_animal_ranch",
+    "author": "Your Name",
+    "version": "0.2.1",
+    "homepage": "",
+    "conflicts": [],
+    "min_point_version": 45,
+    "max_point_version": null,
+    "branch_index": 0
+}
