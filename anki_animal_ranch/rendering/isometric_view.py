@@ -839,7 +839,19 @@ class IsometricView(QGraphicsView):
         # Convert to scene coordinates
         scene_pos = self.mapToScene(pos.toPoint())
         
-        # Check if clicked on a non-tile sprite (buildings, animals, characters)
+        # Convert to grid coordinates
+        world_pos = screen_to_world(scene_pos.x(), scene_pos.y())
+        grid_x, grid_y = int(world_pos[0]), int(world_pos[1])
+        
+        # In placement mode (preview visible), skip sprite detection and just handle tile click
+        # This allows placing buildings/decorations even when clicking on existing sprites
+        if self._placement_preview is not None:
+            self.tile_clicked.emit(grid_x, grid_y)
+            if self._click_handler is not None:
+                self._click_handler(grid_x, grid_y)
+            return
+        
+        # Normal mode: check if clicked on a non-tile sprite (buildings, animals, characters)
         items = self._scene.items(scene_pos)
         for item in items:
             # Skip tile sprites - we want to click through them
@@ -849,11 +861,7 @@ class IsometricView(QGraphicsView):
                 self.sprite_clicked.emit(item)
                 return
         
-        # Convert to grid coordinates
-        world_pos = screen_to_world(scene_pos.x(), scene_pos.y())
-        grid_x, grid_y = int(world_pos[0]), int(world_pos[1])
-        
-        # Emit signal
+        # No sprite clicked - emit tile_clicked
         self.tile_clicked.emit(grid_x, grid_y)
         
         # Call custom handler if set

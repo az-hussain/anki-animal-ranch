@@ -3,6 +3,9 @@ Save Manager - Handles saving and loading game state.
 
 Saves game data to JSON files in the Anki profile folder (when running as addon)
 or to a local folder (when running standalone).
+
+Time is derived from farm.statistics.total_cards_answered, so no separate
+time_system serialization is needed.
 """
 
 from __future__ import annotations
@@ -16,12 +19,11 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from ..models.farm import Farm
-    from ..core.time_system import TimeSystem
 
 logger = get_logger(__name__)
 
 # Save file version for migration support
-SAVE_VERSION = 1
+SAVE_VERSION = 2  # Bumped: removed time_system, time derived from card count
 SAVE_FILENAME = "anki_animal_ranch_save.json"
 BACKUP_FILENAME = "anki_animal_ranch_save_backup.json"
 
@@ -91,17 +93,16 @@ class SaveManager:
         """Check if a backup save exists."""
         return self._backup_path.exists()
     
-    def save(
-        self,
-        farm: Farm,
-        time_system: TimeSystem,
-    ) -> bool:
+    def save(self, farm: Farm, app_version: str | None = None) -> bool:
         """
         Save the current game state.
         
+        Time is derived from farm.statistics.total_cards_answered,
+        so only the farm needs to be saved.
+        
         Args:
             farm: The farm state to save
-            time_system: The time system state to save
+            app_version: Current app version (for changelog tracking)
             
         Returns:
             True if save was successful
@@ -116,8 +117,11 @@ class SaveManager:
                 "version": SAVE_VERSION,
                 "saved_at": datetime.now().isoformat(),
                 "farm": farm.to_dict(),
-                "time_system": time_system.to_dict(),
             }
+            
+            # Track app version for changelog
+            if app_version:
+                save_data["last_seen_version"] = app_version
             
             # Ensure directory exists
             self._save_dir.mkdir(parents=True, exist_ok=True)
@@ -137,16 +141,18 @@ class SaveManager:
             logger.error(f"Failed to save game: {e}")
             return False
     
-    def load(self) -> tuple[Farm, TimeSystem] | None:
+    def load(self) -> Farm | None:
         """
         Load game state from save file.
         
+        Time is derived from farm.statistics.total_cards_answered.
+        Initialize TimeSystem with this value after loading.
+        
         Returns:
-            Tuple of (Farm, TimeSystem) if successful, None otherwise
+            Farm if successful, None otherwise
         """
         # Import here to avoid circular imports
         from ..models.farm import Farm
-        from ..core.time_system import TimeSystem
         
         # Try main save first
         save_data = self._load_file(self._save_path)
@@ -176,14 +182,10 @@ class SaveManager:
             farm_data = save_data.get("farm", {})
             farm = Farm.from_dict(farm_data)
             
-            # Deserialize time system
-            time_data = save_data.get("time_system", {})
-            time_system = TimeSystem.from_dict(time_data)
-            
             saved_at = save_data.get("saved_at", "unknown")
             logger.info(f"Game loaded from save (saved at: {saved_at})")
             
-            return farm, time_system
+            return farm
             
         except Exception as e:
             logger.error(f"Failed to deserialize save data: {e}")
@@ -247,16 +249,30 @@ class SaveManager:
         Returns:
             Migrated save data
         """
-        # Currently at version 1, no migrations needed yet
-        # Future migrations would go here:
-        #
-        # if from_version < 2:
-        #     data = self._migrate_v1_to_v2(data)
-        #     from_version = 2
-        #
-        # if from_version < 3:
-        #     data = self._migrate_v2_to_v3(data)
-        #     from_version = 3
+        # Version 1 -> 2: Remove time_system, time derived from card count
+        # No actual data migration needed - we just ignore the old time_system
+        # and use farm.statistics.total_cards_answered instead
+        
+        if from_version < 2:
+            logger.info("Migrating save from v1 to v2 (time from card count)")
+            # If old save has time_system with total_cards_answered,
+            # ensure farm.statistics.total_cards_answered is set correctly
+            time_system = data.get("time_system", {})
+            old_card_count = time_system.get("total_cards_answered", 0)
+            
+            farm_data = data.get("farm", {})
+            stats = farm_data.get("statistics", {})
+            current_card_count = stats.get("total_cards_answered", 0)
+            
+            # Use the higher of the two counts (in case they diverged)
+            if old_card_count > current_card_count:
+                if "statistics" not in farm_data:
+                    farm_data["statistics"] = {}
+                farm_data["statistics"]["total_cards_answered"] = old_card_count
+                data["farm"] = farm_data
+                logger.info(f"Migrated card count: {old_card_count}")
+            
+            from_version = 2
         
         return data
     
@@ -279,6 +295,57 @@ class SaveManager:
             logger.error(f"Failed to delete save: {e}")
             return False
     
+    def get_last_seen_version(self) -> str | None:
+        """
+        Get the last seen app version from the save file.
+        
+        Returns:
+            Version string, or None if no save or no version recorded
+        """
+        if not self._save_path.exists():
+            return None
+        
+        try:
+            with open(self._save_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            return data.get("last_seen_version")
+        except Exception as e:
+            logger.error(f"Failed to read last seen version: {e}")
+            return None
+    
+    def update_last_seen_version(self, version: str) -> bool:
+        """
+        Update only the last_seen_version in the save file.
+        
+        This is used after showing the changelog to avoid re-showing it.
+        
+        Args:
+            version: The current app version
+            
+        Returns:
+            True if successful
+        """
+        if not self._save_path.exists():
+            return False
+        
+        try:
+            # Read current save
+            with open(self._save_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            
+            # Update version
+            data["last_seen_version"] = version
+            
+            # Write back
+            with open(self._save_path, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2, ensure_ascii=False)
+            
+            logger.info(f"Updated last seen version to {version}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to update last seen version: {e}")
+            return False
+    
     def get_save_info(self) -> dict | None:
         """
         Get information about the current save without fully loading it.
@@ -298,6 +365,7 @@ class SaveManager:
             return {
                 "version": data.get("version", 1),
                 "saved_at": data.get("saved_at", "unknown"),
+                "last_seen_version": data.get("last_seen_version"),
                 "farm_name": farm_data.get("name", "Unknown"),
                 "money": farm_data.get("money", 0),
                 "animal_count": len(farm_data.get("animals", {})),

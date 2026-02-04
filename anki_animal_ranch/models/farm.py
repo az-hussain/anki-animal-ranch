@@ -22,7 +22,6 @@ from ..core.constants import (
     FeedType,
     Season,
 )
-from ..core.time_system import FarmTime
 from .animal import Animal
 from .building import Building
 from .decoration import Decoration
@@ -122,7 +121,6 @@ class Farm:
         owner_id: User ID of the farm owner
         money: Current money balance
         unlocked_zones: Number of zones unlocked
-        current_time: Current game time
         player: The player's inventory
         animals: All animals on the farm (id -> Animal)
         buildings: All buildings (id -> Building)
@@ -136,7 +134,6 @@ class Farm:
     owner_id: str = ""
     money: int = INITIAL_MONEY
     unlocked_zones: int = 1
-    current_time: FarmTime = field(default_factory=FarmTime)
     
     player: Player = field(default_factory=Player)
     
@@ -503,7 +500,6 @@ class Farm:
             "owner_id": self.owner_id,
             "money": self.money,
             "unlocked_zones": self.unlocked_zones,
-            "current_time": self.current_time.to_dict(),
             "player": self.player.to_dict(),
             "animals": {aid: a.to_dict() for aid, a in self.animals.items()},
             "buildings": {bid: b.to_dict() for bid, b in self.buildings.items()},
@@ -524,8 +520,8 @@ class Farm:
             unlocked_zones=data.get("unlocked_zones", 1),
         )
         
-        if "current_time" in data:
-            farm.current_time = FarmTime.from_dict(data["current_time"])
+        # Note: current_time is no longer stored in Farm
+        # Time is derived from farm.statistics.total_cards_answered
         
         if "player" in data:
             farm.player = Player.from_dict(data["player"])

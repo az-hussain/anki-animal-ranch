@@ -797,12 +797,13 @@ class MarketDialog(QDialog):
                 except ValueError:
                     continue
             
-                value = quantity * price
-                total_earned += value
-                
-                # Clear from inventory
+            # Calculate value and add to total (runs for both formats)
+            value = quantity * price
+            total_earned += value
+            
+            # Clear from inventory
             del inventory[key]
-                
+            
             logger.info(f"Sold {quantity} {key} for ${value}")
         
         if total_earned > 0:

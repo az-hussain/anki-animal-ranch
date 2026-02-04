@@ -121,6 +121,10 @@ class MainWindow(QMainWindow):
         self._setup_ui()
         self._setup_game()
         
+        # Delay changelog check so game is fully visible in background
+        # Using a longer delay ensures the window is rendered
+        QTimer.singleShot(1000, self._check_for_changelog)
+        
         logger.info("MainWindow initialized")
     
     def _setup_window(self) -> None:
@@ -348,12 +352,14 @@ class MainWindow(QMainWindow):
         loaded = save_manager.load()
         
         if loaded is not None:
-            self.farm, self.time_system = loaded
-            logger.info(f"Loaded save: {self.farm.name} with ${self.farm.money}")
+            self.farm = loaded
+            # Initialize TimeSystem with card count from farm stats
+            self.time_system = TimeSystem(total_cards=self.farm.statistics.total_cards_answered)
+            logger.info(f"Loaded save: {self.farm.name} with ${self.farm.money}, {self.farm.statistics.total_cards_answered} cards")
         else:
             # Create new farm
             self.farm = Farm.create_new(name="My Ranch")
-            self.time_system = TimeSystem()
+            self.time_system = TimeSystem(total_cards=0)
             logger.info("Created new farm")
         
         # Initialize growth system
@@ -394,6 +400,39 @@ class MainWindow(QMainWindow):
         self._update_ui()
         
         logger.info("Game systems initialized")
+    
+    def _check_for_changelog(self) -> None:
+        """Check if we should show the changelog (after an update)."""
+        from ..core.changelog import get_versions_between, get_changelog_for_versions
+        
+        save_manager = get_save_manager()
+        last_seen = save_manager.get_last_seen_version()
+        
+        # If no last_seen_version, this is an existing user updating from before
+        # changelog tracking was added. Assume they were on 0.2.4.
+        if last_seen is None:
+            last_seen = "0.2.4"
+            logger.info(f"No previous version found, assuming {last_seen}")
+        
+        # Check if there are new versions to show
+        new_versions = get_versions_between(last_seen, VERSION)
+        
+        if not new_versions:
+            logger.debug(f"No changelog to show (last seen: {last_seen}, current: {VERSION})")
+            return
+        
+        logger.info(f"Showing changelog for versions: {new_versions}")
+        
+        # Get changelog content
+        changelog = get_changelog_for_versions(new_versions)
+        
+        if changelog:
+            from .dialogs import ChangelogDialog
+            dialog = ChangelogDialog(changelog, self)
+            dialog.exec()
+        
+        # Update the last seen version
+        save_manager.update_last_seen_version(VERSION)
     
     def _game_tick(self) -> None:
         """Main game loop tick (called every frame)."""
@@ -609,6 +648,10 @@ class MainWindow(QMainWindow):
     def _on_sprite_clicked(self, sprite) -> None:
         """Handle click on a sprite."""
         logger.info(f"Sprite clicked: {sprite}")
+        
+        # Block interactions in placement/move mode
+        if self._placement_mode:
+            return
         
         # Block interactions in visit mode (view only)
         if self._visiting_friend:
@@ -1541,13 +1584,10 @@ class MainWindow(QMainWindow):
                     f"can_produce={animal.is_mature}"
                 )
         
-        # Update statistics
-        self.farm.statistics.total_cards_answered += 1
-        
-        # Auto-save every 25 "cards"
-        if self.farm.statistics.total_cards_answered % 25 == 0:
+        # Auto-save every 25 time advances (TimeSystem tracks the count)
+        if self.time_system.total_cards_answered % 25 == 0:
             self.save_game()
-            logger.info(f"💾 Auto-saved after {self.farm.statistics.total_cards_answered} study clicks")
+            logger.info(f"💾 Auto-saved after {self.time_system.total_cards_answered} study clicks")
         
         # Update UI
         self._update_ui()
@@ -1567,9 +1607,6 @@ class MainWindow(QMainWindow):
         """
         if self.time_system is None or self.farm is None:
             return
-        
-        # Track cards answered
-        self.farm.statistics.total_cards_answered += 1
         
         # Get time before to calculate hours passed
         old_hour = self.time_system.current_time.hour
@@ -1612,13 +1649,10 @@ class MainWindow(QMainWindow):
                     else:
                         logger.warning(f"  Sprite not found for animal_id={animal_id}")
         
-        # Update statistics
-        self.farm.statistics.total_cards_answered += 1
-        
-        # Auto-save every 25 cards
-        if self.farm.statistics.total_cards_answered % 25 == 0:
+        # Auto-save every 25 cards (TimeSystem tracks the count)
+        if self.time_system.total_cards_answered % 25 == 0:
             self.save_game()
-            logger.info(f"💾 Auto-saved after {self.farm.statistics.total_cards_answered} cards")
+            logger.info(f"💾 Auto-saved after {self.time_system.total_cards_answered} cards")
         
         # Update UI
         self._update_ui()
@@ -1646,15 +1680,19 @@ class MainWindow(QMainWindow):
     
     def save_game(self) -> None:
         """Save the current game state."""
-        if self.farm is None or self.time_system is None:
+        if self.farm is None:
             return
         
         # Don't save while visiting friend's farm
         if self._visiting_friend:
             return
         
+        # Sync card count from time_system to farm stats before saving
+        if self.time_system is not None:
+            self.farm.statistics.total_cards_answered = self.time_system.total_cards_answered
+        
         save_manager = get_save_manager()
-        if save_manager.save(self.farm, self.time_system):
+        if save_manager.save(self.farm, app_version=VERSION):
             logger.info(f"💾 Game saved! (${self.farm.money}, {len(self.farm.animals)} animals)")
             # Also sync to cloud
             self._sync_farm_to_cloud()
@@ -1670,7 +1708,9 @@ class MainWindow(QMainWindow):
             logger.warning("No save file found")
             return
         
-        self.farm, self.time_system = loaded
+        self.farm = loaded
+        # Initialize TimeSystem with card count from farm stats
+        self.time_system = TimeSystem(total_cards=self.farm.statistics.total_cards_answered)
         
         # Update growth system with new farm
         self.growth_system = GrowthSystem(self.farm)
