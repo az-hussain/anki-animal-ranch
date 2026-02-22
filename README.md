@@ -2,7 +2,7 @@
 
 > **Turn your Anki study sessions into an immersive isometric farming adventure!**
 
-![Version](https://img.shields.io/badge/version-0.4.0-blue)
+![Version](https://img.shields.io/badge/version-0.4.1-blue)
 ![Python](https://img.shields.io/badge/python-3.9+-green)
 ![Anki](https://img.shields.io/badge/Anki-2.1.50+-purple)
 ![License](https://img.shields.io/badge/license-MIT-orange)

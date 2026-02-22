@@ -13,7 +13,6 @@ from typing import TYPE_CHECKING
 from PyQt6.QtCore import QEvent, Qt, QTimer
 from PyQt6.QtGui import QCloseEvent, QKeyEvent
 from PyQt6.QtWidgets import (
-    QApplication,
     QHBoxLayout,
     QMainWindow,
     QWidget,
@@ -194,10 +193,6 @@ class MainWindow(QMainWindow):
             # Center view on first zone
             self._iso_view.fit_view_to_unlocked()
         
-        # Throttle animation when the app loses focus
-        app = QApplication.instance()
-        if app is not None:
-            app.applicationStateChanged.connect(self._on_app_state_changed)
 
         # Update UI with initial state
         self._update_ui()
@@ -1164,24 +1159,21 @@ class MainWindow(QMainWindow):
         self.pause_game()
 
     def changeEvent(self, event: QEvent) -> None:
-        """Pause animation when minimized, resume when restored."""
+        """Handle minimize, restore, and window focus changes."""
         super().changeEvent(event)
         if event.type() == QEvent.Type.WindowStateChange:
             if self.windowState() & Qt.WindowState.WindowMinimized:
                 self.pause_game()
             elif self._iso_view and not self._iso_view._animation_timer.isActive():
                 self.start_game()
-
-    def _on_app_state_changed(self, state: Qt.ApplicationState) -> None:
-        """Throttle to 5 FPS when another app has focus, restore to 30 FPS when focused."""
-        if self._iso_view is None:
-            return
-        if state == Qt.ApplicationState.ApplicationActive:
-            self._iso_view.set_animation_fps(30)
-            logger.debug("App focused — 30 FPS")
-        else:
-            self._iso_view.set_animation_fps(5)
-            logger.debug("App unfocused — 5 FPS")
+        elif event.type() == QEvent.Type.ActivationChange:
+            if self._iso_view:
+                if self.isActiveWindow():
+                    self._iso_view.set_animation_fps(30)
+                    logger.debug("Window focused — 30 FPS")
+                else:
+                    self._iso_view.set_animation_fps(5)
+                    logger.debug("Window unfocused — 5 FPS")
 
     def keyPressEvent(self, event: QKeyEvent) -> None:
         """Handle key press events."""
