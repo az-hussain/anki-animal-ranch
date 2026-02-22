@@ -104,15 +104,6 @@ class Animal:
         return self.is_mature and self.health > 0.3
     
     @property
-    def care_quality(self) -> float:
-        """
-        Calculate overall care quality (0.0 to 1.0).
-        
-        Simplified to just health - feed → health → product quality.
-        """
-        return self.health
-    
-    @property
     def size(self) -> AnimalSize:
         """Get the size category of this animal."""
         return ANIMAL_SIZES[self.type]
@@ -144,11 +135,11 @@ class Animal:
     def growth_rate(self) -> float:
         """
         Get the current growth rate (maturity per hour).
-        
-        Growth rate is affected by care quality.
+
+        Growth rate is affected by health.
         """
         base_rate = ANIMAL_GROWTH_RATES[self.type]
-        return base_rate * self.care_quality
+        return base_rate * self.health
     
     @property
     def sale_value(self) -> int:

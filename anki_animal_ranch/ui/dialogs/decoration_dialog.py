@@ -21,6 +21,16 @@ from PyQt6.QtWidgets import (
 
 from ...core.constants import DECORATION_INFO, DecorationType
 from ...utils.logger import get_logger
+from ..theme import (
+    COLOR_BG_DARK,
+    COLOR_PRIMARY,
+    COLOR_PRIMARY_FRAME_BG,
+    COLOR_TEXT_MUTED,
+    COLOR_TEXT_WHITE,
+    danger_button_style,
+    move_button_style,
+    neutral_button_style,
+)
 
 if TYPE_CHECKING:
     from ...models.decoration import Decoration
@@ -62,10 +72,10 @@ class DecorationDetailsDialog(QDialog):
         self.setMinimumSize(380, 200)
         self.resize(420, 220)
         
-        self.setStyleSheet("""
-            QDialog {
-                background-color: #2c2c2c;
-            }
+        self.setStyleSheet(f"""
+            QDialog {{
+                background-color: {COLOR_BG_DARK};
+            }}
         """)
         
         layout = QVBoxLayout(self)
@@ -85,55 +95,19 @@ class DecorationDetailsDialog(QDialog):
         
         # Move button
         move_btn = QPushButton("📍 Move")
-        move_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #4a7a9f;
-                color: white;
-                border: none;
-                padding: 10px 25px;
-                font-size: 14px;
-                border-radius: 6px;
-            }
-            QPushButton:hover {
-                background-color: #5a8abf;
-            }
-        """)
+        move_btn.setStyleSheet(move_button_style())
         move_btn.clicked.connect(self._on_move_clicked)
         buttons_layout.addWidget(move_btn)
         
         # Delete button
         delete_btn = QPushButton("🗑️ Remove")
-        delete_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #8f4a4a;
-                color: white;
-                border: none;
-                padding: 10px 25px;
-                font-size: 14px;
-                border-radius: 6px;
-            }
-            QPushButton:hover {
-                background-color: #a85a5a;
-            }
-        """)
+        delete_btn.setStyleSheet(danger_button_style())
         delete_btn.clicked.connect(self._on_delete_clicked)
         buttons_layout.addWidget(delete_btn)
         
         # Close button
         close_btn = QPushButton("Close")
-        close_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #666;
-                color: white;
-                border: none;
-                padding: 10px 25px;
-                font-size: 14px;
-                border-radius: 6px;
-            }
-            QPushButton:hover {
-                background-color: #777;
-            }
-        """)
+        close_btn.setStyleSheet(neutral_button_style())
         close_btn.clicked.connect(self.close)
         buttons_layout.addWidget(close_btn)
         
@@ -143,12 +117,12 @@ class DecorationDetailsDialog(QDialog):
         """Create the header section."""
         frame = QFrame()
         frame.setObjectName("headerFrame")
-        frame.setStyleSheet("""
-            #headerFrame {
-                background-color: #3a4a3a;
-                border: 2px solid #5a8f4a;
+        frame.setStyleSheet(f"""
+            #headerFrame {{
+                background-color: {COLOR_PRIMARY_FRAME_BG};
+                border: 2px solid {COLOR_PRIMARY};
                 border-radius: 8px;
-            }
+            }}
         """)
         
         layout = QHBoxLayout(frame)
@@ -165,11 +139,11 @@ class DecorationDetailsDialog(QDialog):
         info_layout.setSpacing(4)
         
         name_label = QLabel(info.get("name", "Decoration"))
-        name_label.setStyleSheet("font-size: 18px; font-weight: bold; color: #fff; background: transparent; border: none;")
+        name_label.setStyleSheet(f"font-size: 18px; font-weight: bold; color: {COLOR_TEXT_WHITE}; background: transparent; border: none;")
         info_layout.addWidget(name_label)
         
         desc_label = QLabel(info.get("description", "A decorative item"))
-        desc_label.setStyleSheet("font-size: 12px; color: #aaa; background: transparent; border: none;")
+        desc_label.setStyleSheet(f"font-size: 12px; color: {COLOR_TEXT_MUTED}; background: transparent; border: none;")
         desc_label.setWordWrap(True)
         info_layout.addWidget(desc_label)
         

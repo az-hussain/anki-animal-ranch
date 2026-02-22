@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 
 from ..core.constants import (
     PRODUCT_BASE_PRICES,
+    PRODUCT_FRESHNESS_DECAY_RATES,
     PRODUCT_QUALITY_MULTIPLIERS,
     ProductQuality,
     ProductType,
@@ -137,15 +138,8 @@ class Product:
         Args:
             hours_passed: Number of game hours that have passed
         """
-        # Products lose freshness over time
-        # Different products decay at different rates
-        decay_rates = {
-            ProductType.EGG: 0.02,      # ~50 hours to spoil
-            ProductType.MILK: 0.04,     # ~25 hours to spoil
-            ProductType.TRUFFLE: 0.01,  # ~100 hours to spoil
-        }
-        
-        decay = decay_rates.get(self.type, 0.02) * hours_passed
+        # Products lose freshness over time (rates defined in constants.PRODUCT_FRESHNESS_DECAY_RATES)
+        decay = PRODUCT_FRESHNESS_DECAY_RATES.get(self.type.value, 0.02) * hours_passed
         self.freshness = max(0.0, self.freshness - decay)
     
     def stack(self, other: Product) -> bool:
@@ -221,14 +215,14 @@ class Product:
         Returns:
             A new Product with quality based on care
         """
-        from ..core.constants import ANIMAL_PRODUCTS, QUALITY_CARE_THRESHOLDS
-        
+        from ..core.constants import ANIMAL_PRODUCTS, HEALTH_QUALITY_THRESHOLDS
+
         product_type = ANIMAL_PRODUCTS[animal_type]
-        
+
         # Determine quality based on care
         quality = ProductQuality.BASIC
         for q in [ProductQuality.ARTISAN, ProductQuality.PREMIUM, ProductQuality.GOOD]:
-            if care_quality >= QUALITY_CARE_THRESHOLDS[q]:
+            if care_quality >= HEALTH_QUALITY_THRESHOLDS[q]:
                 quality = q
                 break
         

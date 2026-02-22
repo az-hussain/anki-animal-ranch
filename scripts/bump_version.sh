@@ -1,50 +1,52 @@
 #!/bin/bash
-# Bump version and rebuild addon
-# Usage: ./scripts/bump_version.sh [major|minor|patch]
+# Sync version from changelog.py → manifest.json + README.md, then build.
+#
+# Usage: ./scripts/bump_version.sh
+#
+# The version is the first key in core/changelog.py CHANGELOG dict.
+# To release: add the new version entry at the top of that dict, then run this.
 
 set -e
 
 cd "$(dirname "$0")/.."
 
-# Get current version
-CURRENT=$(grep -o '"version": "[^"]*"' anki_animal_ranch/manifest.json | cut -d'"' -f4)
-IFS='.' read -ra PARTS <<< "$CURRENT"
-MAJOR=${PARTS[0]}
-MINOR=${PARTS[1]}
-PATCH=${PARTS[2]}
+# Read version from changelog.py (first key in CHANGELOG dict)
+NEW_VERSION=$(python3 -c "
+import sys
+sys.path.insert(0, '.')
+from anki_animal_ranch.core.changelog import CHANGELOG
+print(next(iter(CHANGELOG)))
+")
 
-# Determine bump type
-BUMP_TYPE=${1:-patch}
+# Read what manifest.json currently has
+CURRENT=$(python3 -c "
+import json
+with open('anki_animal_ranch/manifest.json') as f:
+    print(json.load(f)['version'])
+")
 
-case $BUMP_TYPE in
-    major)
-        MAJOR=$((MAJOR + 1))
-        MINOR=0
-        PATCH=0
-        ;;
-    minor)
-        MINOR=$((MINOR + 1))
-        PATCH=0
-        ;;
-    patch)
-        PATCH=$((PATCH + 1))
-        ;;
-    *)
-        echo "Usage: $0 [major|minor|patch]"
-        exit 1
-        ;;
-esac
+if [ "$NEW_VERSION" = "$CURRENT" ]; then
+    echo "⚠️  Version is already $CURRENT — add a new entry to core/changelog.py first."
+    exit 1
+fi
 
-NEW_VERSION="${MAJOR}.${MINOR}.${PATCH}"
+echo "📦 Releasing: $CURRENT → $NEW_VERSION"
 
-echo "📦 Bumping version: $CURRENT → $NEW_VERSION"
+# Sync manifest.json
+python3 -c "
+import json
+with open('anki_animal_ranch/manifest.json') as f:
+    data = json.load(f)
+data['version'] = '$NEW_VERSION'
+with open('anki_animal_ranch/manifest.json', 'w') as f:
+    json.dump(data, f, indent=4)
+print('  ✅ manifest.json updated')
+"
 
-# Update manifest.json
-sed -i '' "s/\"version\": \"$CURRENT\"/\"version\": \"$NEW_VERSION\"/" anki_animal_ranch/manifest.json
-
-# Update README.md badge
+# Sync README.md version badge
 sed -i '' "s/version-[0-9]*\.[0-9]*\.[0-9]*/version-$NEW_VERSION/" README.md
+echo "  ✅ README.md updated"
 
-echo "✅ Version bumped to $NEW_VERSION"
 echo ""
-echo "Now run: ./scripts/build_addon.sh"
+echo "Building addon..."
+./scripts/build_addon.sh

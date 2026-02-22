@@ -14,6 +14,18 @@ from PyQt6.QtWidgets import (
     QFrame,
 )
 
+from ..theme import (
+    COLOR_BG_BORDER,
+    COLOR_BG_DARK,
+    COLOR_BG_PANEL,
+    COLOR_PRIMARY,
+    COLOR_PRIMARY_HOVER,
+    COLOR_PRIMARY_PRESSED,
+    COLOR_TEXT_LIGHT,
+    COLOR_TEXT_MUTED,
+    primary_button_style,
+)
+
 
 class ChangelogDialog(QDialog):
     """Dialog showing changelog entries for recent updates."""
@@ -36,17 +48,17 @@ class ChangelogDialog(QDialog):
     def _setup_ui(self, changelog: dict[str, list[str]]) -> None:
         """Set up the dialog UI."""
         # Dark theme matching other game dialogs
-        self.setStyleSheet("""
-            QDialog {
-                background-color: #2c2c2c;
-            }
-            QScrollArea {
-                background-color: #2c2c2c;
+        self.setStyleSheet(f"""
+            QDialog {{
+                background-color: {COLOR_BG_DARK};
+            }}
+            QScrollArea {{
+                background-color: {COLOR_BG_DARK};
                 border: none;
-            }
-            QWidget {
-                background-color: #2c2c2c;
-            }
+            }}
+            QWidget {{
+                background-color: {COLOR_BG_DARK};
+            }}
         """)
         
         layout = QVBoxLayout(self)
@@ -55,25 +67,25 @@ class ChangelogDialog(QDialog):
         
         # Header
         header = QLabel("🎉 Anki Animal Ranch Updated!")
-        header.setStyleSheet("""
-            QLabel {
+        header.setStyleSheet(f"""
+            QLabel {{
                 font-size: 20px;
                 font-weight: bold;
-                color: #4CAF50;
+                color: {COLOR_PRIMARY};
                 background-color: transparent;
-            }
+            }}
         """)
         header.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(header)
         
         # Subtitle
         subtitle = QLabel("Here's what's new:")
-        subtitle.setStyleSheet("""
-            QLabel {
+        subtitle.setStyleSheet(f"""
+            QLabel {{
                 font-size: 14px;
-                color: #aaa;
+                color: {COLOR_TEXT_MUTED};
                 background-color: transparent;
-            }
+            }}
         """)
         subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(subtitle)
@@ -97,30 +109,30 @@ class ChangelogDialog(QDialog):
             # Version section container
             version_frame = QFrame()
             version_frame.setObjectName("versionFrame")
-            version_frame.setStyleSheet("""
-                QFrame#versionFrame {
-                    background-color: #3a3a3a;
+            version_frame.setStyleSheet(f"""
+                QFrame#versionFrame {{
+                    background-color: {COLOR_BG_PANEL};
                     border-radius: 8px;
-                    border: 1px solid #444;
-                }
-                QFrame#versionFrame QLabel {
+                    border: 1px solid {COLOR_BG_BORDER};
+                }}
+                QFrame#versionFrame QLabel {{
                     background: none;
                     border: none;
-                }
+                }}
             """)
             version_layout = QVBoxLayout(version_frame)
             version_layout.setSpacing(8)
             version_layout.setContentsMargins(15, 12, 15, 12)
             
             version_label = QLabel(f"✨ Version {version}")
-            version_label.setStyleSheet("font-size: 15px; font-weight: bold; color: #4CAF50;")
+            version_label.setStyleSheet(f"font-size: 15px; font-weight: bold; color: {COLOR_PRIMARY};")
             version_layout.addWidget(version_label)
             
             # Changes list
             for change in changes:
                 change_label = QLabel(f"  • {change}")
                 change_label.setWordWrap(True)
-                change_label.setStyleSheet("font-size: 13px; color: #ccc; padding-left: 10px;")
+                change_label.setStyleSheet(f"font-size: 13px; color: {COLOR_TEXT_LIGHT}; padding-left: 10px;")
                 version_layout.addWidget(change_label)
             
             content_layout.addWidget(version_frame)
@@ -135,23 +147,7 @@ class ChangelogDialog(QDialog):
         
         ok_btn = QPushButton("Got it!")
         ok_btn.setMinimumWidth(140)
-        ok_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #4CAF50;
-                color: white;
-                border: none;
-                padding: 12px 25px;
-                font-size: 14px;
-                font-weight: bold;
-                border-radius: 6px;
-            }
-            QPushButton:hover {
-                background-color: #45a049;
-            }
-            QPushButton:pressed {
-                background-color: #3d8b40;
-            }
-        """)
+        ok_btn.setStyleSheet(primary_button_style())
         ok_btn.clicked.connect(self.accept)
         button_layout.addWidget(ok_btn)
         

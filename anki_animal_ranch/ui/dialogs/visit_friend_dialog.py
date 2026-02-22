@@ -25,6 +25,18 @@ from PyQt6.QtWidgets import (
 from ...data.account_manager import get_account_manager
 from ...network import fetch_farm, is_online_available
 from ...utils.logger import get_logger
+from ..theme import (
+    COLOR_BG_BORDER,
+    COLOR_BG_DARK,
+    COLOR_BG_PANEL,
+    COLOR_BG_SELECTED,
+    COLOR_NEUTRAL,
+    COLOR_PRIMARY,
+    COLOR_PRIMARY_HOVER,
+    COLOR_TEXT_DIMMED,
+    COLOR_TEXT_MUTED,
+    COLOR_TEXT_WHITE,
+)
 
 logger = get_logger(__name__)
 
@@ -41,15 +53,15 @@ class FriendButton(QFrame):
         self._setup_ui()
     
     def _setup_ui(self) -> None:
-        self.setStyleSheet("""
-            QFrame {
-                background-color: #3a3a3a;
+        self.setStyleSheet(f"""
+            QFrame {{
+                background-color: {COLOR_BG_PANEL};
                 border-radius: 6px;
                 padding: 5px;
-            }
-            QFrame:hover {
-                background-color: #4a4a4a;
-            }
+            }}
+            QFrame:hover {{
+                background-color: {COLOR_BG_SELECTED};
+            }}
         """)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         
@@ -70,17 +82,17 @@ class FriendButton(QFrame):
         # Remove button (small X)
         remove_btn = QPushButton("×")
         remove_btn.setFixedSize(24, 24)
-        remove_btn.setStyleSheet("""
-            QPushButton {
+        remove_btn.setStyleSheet(f"""
+            QPushButton {{
                 background-color: transparent;
-                color: #888;
+                color: {COLOR_TEXT_DIMMED};
                 border: none;
                 font-size: 18px;
                 font-weight: bold;
-            }
-            QPushButton:hover {
+            }}
+            QPushButton:hover {{
                 color: #c44;
-            }
+            }}
         """)
         remove_btn.clicked.connect(lambda: self.remove_clicked.emit(self.username))
         layout.addWidget(remove_btn)
@@ -113,50 +125,50 @@ class VisitFriendDialog(QDialog):
         self.setMinimumSize(450, 500)
         self.setModal(True)
         
-        self.setStyleSheet("""
-            QDialog {
-                background-color: #2c2c2c;
-            }
-            QLabel {
+        self.setStyleSheet(f"""
+            QDialog {{
+                background-color: {COLOR_BG_DARK};
+            }}
+            QLabel {{
                 color: #eee;
-            }
-            QLineEdit {
-                background-color: #3a3a3a;
+            }}
+            QLineEdit {{
+                background-color: {COLOR_BG_PANEL};
                 color: white;
-                border: 2px solid #555;
+                border: 2px solid {COLOR_BG_BORDER};
                 border-radius: 6px;
                 padding: 10px;
                 font-size: 14px;
-            }
-            QLineEdit:focus {
-                border-color: #5a8f4a;
-            }
-            QPushButton {
-                background-color: #5a8f4a;
+            }}
+            QLineEdit:focus {{
+                border-color: {COLOR_PRIMARY};
+            }}
+            QPushButton {{
+                background-color: {COLOR_PRIMARY};
                 color: white;
                 border: none;
                 padding: 10px 20px;
                 font-size: 14px;
                 font-weight: bold;
                 border-radius: 6px;
-            }
-            QPushButton:hover {
-                background-color: #6ba85a;
-            }
-            QPushButton:disabled {
-                background-color: #444;
-                color: #888;
-            }
-            QPushButton#closeBtn {
-                background-color: #4a4a4a;
-            }
-            QPushButton#closeBtn:hover {
+            }}
+            QPushButton:hover {{
+                background-color: {COLOR_PRIMARY_HOVER};
+            }}
+            QPushButton:disabled {{
+                background-color: {COLOR_BG_BORDER};
+                color: {COLOR_TEXT_DIMMED};
+            }}
+            QPushButton#closeBtn {{
+                background-color: {COLOR_BG_SELECTED};
+            }}
+            QPushButton#closeBtn:hover {{
                 background-color: #5a5a5a;
-            }
-            QScrollArea {
+            }}
+            QScrollArea {{
                 border: none;
                 background-color: transparent;
-            }
+            }}
         """)
         
         layout = QVBoxLayout(self)
@@ -165,13 +177,13 @@ class VisitFriendDialog(QDialog):
         
         # Title
         title = QLabel("Visit a Friend's Farm")
-        title.setStyleSheet("font-size: 18px; font-weight: bold; color: #5a8f4a;")
+        title.setStyleSheet(f"font-size: 18px; font-weight: bold; color: {COLOR_PRIMARY};")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(title)
         
         # Search section
         search_label = QLabel("Enter username to visit:")
-        search_label.setStyleSheet("font-size: 13px; color: #aaa;")
+        search_label.setStyleSheet(f"font-size: 13px; color: {COLOR_TEXT_MUTED};")
         layout.addWidget(search_label)
         
         search_layout = QHBoxLayout()
@@ -190,7 +202,7 @@ class VisitFriendDialog(QDialog):
         
         # Status label
         self.status_label = QLabel("")
-        self.status_label.setStyleSheet("font-size: 12px; color: #888;")
+        self.status_label.setStyleSheet(f"font-size: 12px; color: {COLOR_TEXT_DIMMED};")
         self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.status_label)
         
@@ -235,7 +247,7 @@ class VisitFriendDialog(QDialog):
         
         if not friends:
             empty_label = QLabel("No friends yet!\nVisit someone's farm to add them.")
-            empty_label.setStyleSheet("color: #666; font-size: 13px;")
+            empty_label.setStyleSheet(f"color: {COLOR_NEUTRAL}; font-size: 13px;")
             empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             self.friends_layout.insertWidget(0, empty_label)
         else:
@@ -282,7 +294,7 @@ class VisitFriendDialog(QDialog):
         self.visit_btn.setEnabled(False)
         self.visit_btn.setText("Loading...")
         self.status_label.setText(f"Fetching {username}'s farm...")
-        self.status_label.setStyleSheet("font-size: 12px; color: #888;")
+        self.status_label.setStyleSheet(f"font-size: 12px; color: {COLOR_TEXT_DIMMED};")
         
         # Fetch farm
         result = fetch_farm(username)

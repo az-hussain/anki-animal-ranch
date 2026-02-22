@@ -9,6 +9,26 @@ Provides a clean UI for purchasing:
 from __future__ import annotations
 
 from ...utils.logger import get_logger
+from ..theme import (
+    COLOR_BG_BORDER,
+    COLOR_BG_DARK,
+    COLOR_BG_PANEL,
+    COLOR_BG_SELECTED,
+    COLOR_NEUTRAL,
+    COLOR_PRIMARY,
+    COLOR_PRIMARY_FRAME_BG,
+    COLOR_PRIMARY_HOVER,
+    COLOR_TEXT_ACCENT,
+    COLOR_TEXT_DIMMED,
+    COLOR_TEXT_LIGHT,
+    COLOR_TEXT_MUTED,
+    COLOR_TEXT_WHITE,
+    money_label_style,
+    neutral_button_style,
+    primary_button_style,
+    shop_item_style,
+    tab_widget_style,
+)
 from typing import TYPE_CHECKING, Callable
 
 from PyQt6.QtCore import Qt, pyqtSignal
@@ -30,6 +50,7 @@ from ...core.constants import (
     ANIMAL_FEED_MAP,
     ANIMAL_PURCHASE_PRICES,
     BUILDING_CAPACITIES,
+    BUILDING_DISPLAY_INFO,
     BUILDING_FOOTPRINTS,
     BUILDING_PURCHASE_COSTS,
     DECORATION_COSTS,
@@ -44,33 +65,13 @@ from ...core.constants import (
     FeedType,
 )
 
+from ...services.shop_service import purchase_feed
+
 if TYPE_CHECKING:
     from ...models.farm import Farm
 
 logger = get_logger(__name__)
 
-
-# Building info for display
-BUILDING_INFO = {
-    BuildingType.COOP: {
-        "name": "Chicken Coop",
-        "emoji": "🐔",
-        "description": "Houses chickens. They produce eggs!",
-        "animal_type": AnimalType.CHICKEN,
-    },
-    BuildingType.PIGSTY: {
-        "name": "Pig Sty",
-        "emoji": "🐷",
-        "description": "Houses pigs. They find truffles!",
-        "animal_type": AnimalType.PIG,
-    },
-    BuildingType.BARN: {
-        "name": "Cow Barn",
-        "emoji": "🐄",
-        "description": "Houses cows. They produce milk!",
-        "animal_type": AnimalType.COW,
-    },
-}
 
 # Animal info for display
 ANIMAL_INFO = {
@@ -153,23 +154,9 @@ class ShopItemWidget(QFrame):
         self.setFrameStyle(QFrame.Shape.Box | QFrame.Shadow.Raised)
         self.setLineWidth(2)
         
-        # Style
-        bg_color = "#3a4a3a" if enabled else "#2a2a2a"
-        border_color = "#5a8f4a" if enabled else "#444"
-        text_color = "#fff" if enabled else "#666"
-        
-        self.setStyleSheet(f"""
-            ShopItemWidget {{
-                background-color: {bg_color};
-                border: 2px solid {border_color};
-                border-radius: 8px;
-                padding: 8px;
-            }}
-            ShopItemWidget:hover {{
-                background-color: {"#4a5a4a" if enabled else bg_color};
-                border-color: {"#6ba85a" if enabled else border_color};
-            }}
-        """)
+        text_color = COLOR_TEXT_WHITE if enabled else COLOR_NEUTRAL
+
+        self.setStyleSheet(shop_item_style(enabled))
         
         layout = QHBoxLayout(self)
         layout.setContentsMargins(12, 8, 12, 8)
@@ -189,7 +176,7 @@ class ShopItemWidget(QFrame):
         info_layout.addWidget(name_label)
         
         desc_label = QLabel(description)
-        desc_label.setStyleSheet(f"font-size: 11px; color: {'#aaa' if enabled else '#555'};")
+        desc_label.setStyleSheet(f"font-size: 11px; color: {COLOR_TEXT_MUTED if enabled else COLOR_BG_BORDER};")
         desc_label.setWordWrap(True)
         info_layout.addWidget(desc_label)
         
@@ -205,7 +192,7 @@ class ShopItemWidget(QFrame):
         price_label.setStyleSheet(f"""
             font-size: 18px;
             font-weight: bold;
-            color: {"#f0c040" if enabled else "#665"};
+            color: {COLOR_TEXT_ACCENT if enabled else "#665"};
         """)
         layout.addWidget(price_label)
         
@@ -249,30 +236,7 @@ class ShopDialog(QDialog):
         self.setMinimumSize(500, 400)
         self.resize(550, 500)
         
-        self.setStyleSheet("""
-            QDialog {
-                background-color: #2c2c2c;
-            }
-            QTabWidget::pane {
-                border: 1px solid #444;
-                background-color: #333;
-            }
-            QTabBar::tab {
-                background-color: #3a3a3a;
-                color: #ccc;
-                padding: 10px 20px;
-                border: 1px solid #444;
-                border-bottom: none;
-            }
-            QTabBar::tab:selected {
-                background-color: #4a5a4a;
-                color: #fff;
-            }
-            QScrollArea {
-                border: none;
-                background-color: transparent;
-            }
-        """)
+        self.setStyleSheet(f"QDialog {{ background-color: {COLOR_BG_DARK}; }}" + tab_widget_style())
         
         layout = QVBoxLayout(self)
         layout.setContentsMargins(15, 15, 15, 15)
@@ -280,14 +244,7 @@ class ShopDialog(QDialog):
         
         # Money display
         self.money_label = QLabel(f"💰 Your Money: ${self.farm.money:,}")
-        self.money_label.setStyleSheet("""
-            font-size: 18px;
-            font-weight: bold;
-            color: #f0c040;
-            padding: 10px;
-            background-color: #3a3a3a;
-            border-radius: 6px;
-        """)
+        self.money_label.setStyleSheet(money_label_style())
         layout.addWidget(self.money_label)
         
         # Tab widget
@@ -312,19 +269,7 @@ class ShopDialog(QDialog):
         
         # Close button
         close_btn = QPushButton("Close")
-        close_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #666;
-                color: white;
-                border: none;
-                padding: 12px 30px;
-                font-size: 14px;
-                border-radius: 6px;
-            }
-            QPushButton:hover {
-                background-color: #777;
-            }
-        """)
+        close_btn.setStyleSheet(neutral_button_style())
         close_btn.clicked.connect(self.close)
         layout.addWidget(close_btn, alignment=Qt.AlignmentFlag.AlignCenter)
     
@@ -352,7 +297,7 @@ class ShopDialog(QDialog):
         
         # Add building items
         for building_type in [BuildingType.COOP, BuildingType.PIGSTY, BuildingType.BARN]:
-            info = BUILDING_INFO.get(building_type, {})
+            info = BUILDING_DISPLAY_INFO.get(building_type.value, {})
             price = BUILDING_PURCHASE_COSTS.get(building_type, 500)
             footprint = BUILDING_FOOTPRINTS.get(building_type, (2, 2))
             capacity = BUILDING_CAPACITIES.get(building_type, [5])[0]
@@ -445,20 +390,20 @@ class ShopDialog(QDialog):
             btn.setEnabled(enabled)
             btn.setStyleSheet(f"""
                 QPushButton {{
-                    background-color: {"#3a3a3a" if enabled else "#2a2a2a"};
-                    color: {"#ccc" if enabled else "#666"};
-                    border: 2px solid #444;
+                    background-color: {COLOR_BG_PANEL if enabled else "#2a2a2a"};
+                    color: {COLOR_TEXT_LIGHT if enabled else COLOR_NEUTRAL};
+                    border: 2px solid {COLOR_BG_BORDER};
                     padding: 8px;
-                border-radius: 8px;
+                    border-radius: 8px;
                     font-size: 12px;
                 }}
                 QPushButton:checked {{
-                    background-color: #4a5a4a;
-                    border-color: #6ba85a;
-                    color: #fff;
+                    background-color: {COLOR_PRIMARY_FRAME_BG};
+                    border-color: {COLOR_PRIMARY_HOVER};
+                    color: {COLOR_TEXT_WHITE};
                 }}
                 QPushButton:hover {{
-                    background-color: {"#4a4a4a" if enabled else "#2a2a2a"};
+                    background-color: {COLOR_BG_SELECTED if enabled else "#2a2a2a"};
                 }}
             """)
             btn.clicked.connect(lambda checked, at=animal_type: self._on_animal_type_selected(at))
@@ -470,7 +415,7 @@ class ShopDialog(QDialog):
         
         # Building selector label
         building_label = QLabel("2. Select which pen to add to:")
-        building_label.setStyleSheet("color: #ccc; font-size: 12px; font-weight: bold; margin-top: 10px;")
+        building_label.setStyleSheet(f"color: {COLOR_TEXT_LIGHT}; font-size: 12px; font-weight: bold; margin-top: 10px;")
         layout.addWidget(building_label)
         
         # Scroll area for buildings
@@ -484,7 +429,7 @@ class ShopDialog(QDialog):
         
         # Placeholder
         placeholder = QLabel("👆 Select an animal type above")
-        placeholder.setStyleSheet("color: #888; font-size: 14px; padding: 20px;")
+        placeholder.setStyleSheet(f"color: {COLOR_TEXT_DIMMED}; font-size: 14px; padding: 20px;")
         placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.buildings_layout.addWidget(placeholder)
         
@@ -530,7 +475,7 @@ class ShopDialog(QDialog):
         
         if not self._selected_animal_type:
             placeholder = QLabel("👆 Select an animal type above")
-            placeholder.setStyleSheet("color: #888; font-size: 14px; padding: 20px;")
+            placeholder.setStyleSheet(f"color: {COLOR_TEXT_DIMMED}; font-size: 14px; padding: 20px;")
             placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
             self.buildings_layout.addWidget(placeholder)
             return
@@ -544,7 +489,7 @@ class ShopDialog(QDialog):
         if not matching_buildings:
             no_buildings = QLabel(
                 f"No housing for this animal type.\n"
-                f"Build a {BUILDING_INFO.get(self._get_building_type_for_animal(self._selected_animal_type), {}).get('name', 'pen')} first!"
+                f"Build a {BUILDING_DISPLAY_INFO.get(self._get_building_type_for_animal(self._selected_animal_type).value if self._get_building_type_for_animal(self._selected_animal_type) else '', {}).get('name', 'pen')} first!"
             )
             no_buildings.setStyleSheet("color: #f88; font-size: 13px; padding: 20px;")
             no_buildings.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -558,7 +503,7 @@ class ShopDialog(QDialog):
         
         # Add building items
         for building in matching_buildings:
-            binfo = BUILDING_INFO.get(building.type, {})
+            binfo = BUILDING_DISPLAY_INFO.get(building.type.value, {})
             capacity_text = f"{building.current_occupancy}/{building.capacity}"
             is_full = building.is_full
             enabled = can_afford and not is_full
@@ -567,8 +512,8 @@ class ShopDialog(QDialog):
             row = QFrame()
             row.setStyleSheet(f"""
                 QFrame {{
-                    background-color: {"#3a4a3a" if enabled else "#2a2a2a"};
-                    border: 2px solid {"#5a8f4a" if enabled else "#444"};
+                    background-color: {COLOR_PRIMARY_FRAME_BG if enabled else "#2a2a2a"};
+                    border: 2px solid {COLOR_PRIMARY if enabled else COLOR_BG_BORDER};
                     border-radius: 8px;
                     padding: 4px;
                 }}
@@ -579,12 +524,12 @@ class ShopDialog(QDialog):
             # Building info
             info_layout = QVBoxLayout()
             name_label = QLabel(f"{binfo.get('emoji', '🏠')} {building.display_name}")
-            name_label.setStyleSheet(f"font-size: 14px; font-weight: bold; color: {'#fff' if enabled else '#666'};")
+            name_label.setStyleSheet(f"font-size: 14px; font-weight: bold; color: {COLOR_TEXT_WHITE if enabled else COLOR_NEUTRAL};")
             info_layout.addWidget(name_label)
             
             capacity_label = QLabel(f"Capacity: {capacity_text}")
             status_color = "#8a8" if not is_full else "#a66"
-            capacity_label.setStyleSheet(f"font-size: 12px; color: {status_color if enabled else '#555'};")
+            capacity_label.setStyleSheet(f"font-size: 12px; color: {status_color if enabled else COLOR_BG_BORDER};")
             info_layout.addWidget(capacity_label)
             
             row_layout.addLayout(info_layout, stretch=1)
@@ -600,19 +545,7 @@ class ShopDialog(QDialog):
                 row_layout.addWidget(status_label)
             else:
                 buy_btn = QPushButton(f"Buy ${price}")
-                buy_btn.setStyleSheet("""
-                    QPushButton {
-                        background-color: #5a8f4a;
-                        color: white;
-                        border: none;
-                        padding: 8px 16px;
-                        border-radius: 4px;
-                        font-weight: bold;
-                    }
-                    QPushButton:hover {
-                        background-color: #6ba85a;
-                    }
-                """)
+                buy_btn.setStyleSheet(primary_button_style(12))
                 buy_btn.clicked.connect(lambda checked, bid=building.id: self._on_buy_animal(bid))
                 row_layout.addWidget(buy_btn)
                 self.building_buttons[building.id] = buy_btn
@@ -669,20 +602,20 @@ class ShopDialog(QDialog):
             
             btn.setStyleSheet(f"""
                 QPushButton {{
-                    background-color: {"#3a3a3a" if enabled else "#2a2a2a"};
-                    color: {"#ccc" if enabled else "#666"};
-                    border: 2px solid #444;
+                    background-color: {COLOR_BG_PANEL if enabled else "#2a2a2a"};
+                    color: {COLOR_TEXT_LIGHT if enabled else COLOR_NEUTRAL};
+                    border: 2px solid {COLOR_BG_BORDER};
                     padding: 8px;
                     border-radius: 8px;
                     font-size: 12px;
                 }}
                 QPushButton:checked {{
-                    background-color: #4a5a4a;
-                    border-color: #6ba85a;
-                    color: #fff;
+                    background-color: {COLOR_PRIMARY_FRAME_BG};
+                    border-color: {COLOR_PRIMARY_HOVER};
+                    color: {COLOR_TEXT_WHITE};
                 }}
                 QPushButton:hover {{
-                    background-color: {"#4a4a4a" if enabled else "#2a2a2a"};
+                    background-color: {COLOR_BG_SELECTED if enabled else "#2a2a2a"};
                 }}
             """)
     
@@ -750,12 +683,12 @@ class ShopDialog(QDialog):
         # Create frame
         frame = QFrame()
         frame.setStyleSheet("""
-            QFrame {
-                background-color: #3a4a3a;
-                border: 2px solid #5a8f4a;
+            QFrame {{
+                background-color: {COLOR_PRIMARY_FRAME_BG};
+                border: 2px solid {COLOR_PRIMARY};
                 border-radius: 8px;
                 padding: 8px;
-            }
+            }}
         """)
         
         main_layout = QVBoxLayout(frame)
@@ -778,7 +711,7 @@ class ShopDialog(QDialog):
         if days_remaining == float('inf'):
             if animal_count == 0:
                 stock_text = f"Stock: {current_stock} (no animals)"
-                stock_color = "#888"
+                stock_color = COLOR_TEXT_DIMMED
             else:
                 stock_text = f"Stock: {current_stock}"
                 stock_color = "#8a8"
@@ -805,7 +738,7 @@ class ShopDialog(QDialog):
         buttons_layout.setSpacing(8)
         
         price_info = QLabel(f"${base_price}/100 units")
-        price_info.setStyleSheet("font-size: 11px; color: #f0c040;")
+        price_info.setStyleSheet(f"font-size: 11px; color: {COLOR_TEXT_ACCENT};")
         buttons_layout.addWidget(price_info)
         
         buttons_layout.addStretch()
@@ -819,15 +752,15 @@ class ShopDialog(QDialog):
             btn.setEnabled(can_afford)
             btn.setStyleSheet(f"""
                 QPushButton {{
-                    background-color: {"#5a8f4a" if can_afford else "#444"};
-                    color: {"white" if can_afford else "#666"};
+                    background-color: {COLOR_PRIMARY if can_afford else COLOR_BG_BORDER};
+                    color: {COLOR_TEXT_WHITE if can_afford else COLOR_NEUTRAL};
                     border: none;
                     padding: 6px 12px;
                     border-radius: 4px;
                     font-size: 11px;
                 }}
                 QPushButton:hover {{
-                    background-color: {"#6ba85a" if can_afford else "#444"};
+                    background-color: {COLOR_PRIMARY_HOVER if can_afford else COLOR_BG_BORDER};
                 }}
             """)
             btn.clicked.connect(
@@ -841,7 +774,7 @@ class ShopDialog(QDialog):
     
     def _on_buy_feed(self, feed_type: FeedType, bundle_size: int) -> None:
         """Handle feed purchase."""
-        if self.farm.buy_feed(feed_type, bundle_size):
+        if purchase_feed(self.farm, feed_type, bundle_size):
             logger.info(f"Purchased {bundle_size} {feed_type.value}")
             self.money_label.setText(f"💰 Your Money: ${self.farm.money:,}")
             # Refresh the feed tab to update stock displays
@@ -970,8 +903,8 @@ class ShopDialog(QDialog):
         frame = QFrame()
         frame.setStyleSheet(f"""
             QFrame {{
-                background-color: #3a4a3a;
-                border: 2px solid {"#5a8f4a" if can_afford else "#444"};
+                background-color: {COLOR_PRIMARY_FRAME_BG};
+                border: 2px solid {COLOR_PRIMARY if can_afford else COLOR_BG_BORDER};
                 border-radius: 6px;
                 padding: 6px;
             }}
@@ -1001,7 +934,7 @@ class ShopDialog(QDialog):
             details_text += " • 🔄"
         
         details_label = QLabel(details_text)
-        details_label.setStyleSheet("font-size: 11px; color: #888;")
+        details_label.setStyleSheet(f"font-size: 11px; color: {COLOR_TEXT_DIMMED};")
         layout.addWidget(details_label)
         
         # Buy button
@@ -1009,15 +942,15 @@ class ShopDialog(QDialog):
         buy_btn.setEnabled(can_afford)
         buy_btn.setStyleSheet(f"""
             QPushButton {{
-                background-color: {"#5a8f4a" if can_afford else "#444"};
-                color: {"white" if can_afford else "#666"};
+                background-color: {COLOR_PRIMARY if can_afford else COLOR_BG_BORDER};
+                color: {COLOR_TEXT_WHITE if can_afford else COLOR_NEUTRAL};
                 border: none;
                 padding: 6px 16px;
                 border-radius: 4px;
                 font-size: 12px;
             }}
             QPushButton:hover {{
-                background-color: {"#6ba85a" if can_afford else "#444"};
+                background-color: {COLOR_PRIMARY_HOVER if can_afford else COLOR_BG_BORDER};
             }}
         """)
         buy_btn.clicked.connect(

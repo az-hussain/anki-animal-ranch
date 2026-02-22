@@ -21,6 +21,24 @@ from PyQt6.QtWidgets import (
 
 from ...core.constants import MAX_FARM_ZONES, ZONE_UNLOCK_COSTS
 from ...utils.logger import get_logger
+from ..theme import (
+    COLOR_BG_BORDER,
+    COLOR_BG_DARK,
+    COLOR_BG_ITEM,
+    COLOR_DANGER,
+    COLOR_DANGER_FRAME_BG,
+    COLOR_PRIMARY,
+    COLOR_PRIMARY_HOVER,
+    COLOR_SOCIAL,
+    COLOR_SOCIAL_FRAME_BG,
+    COLOR_TEXT_ACCENT,
+    COLOR_TEXT_DIMMED,
+    COLOR_TEXT_MUTED,
+    COLOR_TEXT_WHITE,
+    COLOR_UPGRADE,
+    COLOR_UPGRADE_HOVER,
+    neutral_button_style,
+)
 
 if TYPE_CHECKING:
     from ...models.farm import Farm
@@ -51,11 +69,11 @@ class ZoneLockedDialog(QDialog):
         self.setWindowTitle("🔒 Plot Locked")
         self.setMinimumSize(400, 300)
         self.resize(400, 300)
-        
-        self.setStyleSheet("""
-            QDialog {
-                background-color: #2c2c2c;
-            }
+
+        self.setStyleSheet(f"""
+            QDialog {{
+                background-color: {COLOR_BG_DARK};
+            }}
         """)
         
         layout = QVBoxLayout(self)
@@ -65,12 +83,12 @@ class ZoneLockedDialog(QDialog):
         # Header
         frame = QFrame()
         frame.setObjectName("headerFrame")
-        frame.setStyleSheet("""
-            #headerFrame {
-                background-color: #4a3a3a;
-                border: 2px solid #8f5a5a;
+        frame.setStyleSheet(f"""
+            #headerFrame {{
+                background-color: {COLOR_DANGER_FRAME_BG};
+                border: 2px solid {COLOR_DANGER};
                 border-radius: 8px;
-            }
+            }}
         """)
         
         header_layout = QVBoxLayout(frame)
@@ -85,7 +103,7 @@ class ZoneLockedDialog(QDialog):
         
         # Title
         title = QLabel("Plots Must Be Unlocked In Order")
-        title.setStyleSheet("font-size: 16px; font-weight: bold; color: #fff; background: transparent; border: none;")
+        title.setStyleSheet(f"font-size: 16px; font-weight: bold; color: {COLOR_TEXT_WHITE}; background: transparent; border: none;")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         title.setWordWrap(True)
         header_layout.addWidget(title)
@@ -95,12 +113,12 @@ class ZoneLockedDialog(QDialog):
         # Info
         info_frame = QFrame()
         info_frame.setObjectName("infoFrame")
-        info_frame.setStyleSheet("""
-            #infoFrame {
-                background-color: #353535;
-                border: 1px solid #555;
+        info_frame.setStyleSheet(f"""
+            #infoFrame {{
+                background-color: {COLOR_BG_ITEM};
+                border: 1px solid {COLOR_BG_BORDER};
                 border-radius: 6px;
-            }
+            }}
         """)
         
         info_layout = QVBoxLayout(info_frame)
@@ -112,26 +130,26 @@ class ZoneLockedDialog(QDialog):
         info_layout.addWidget(next_label)
         
         this_label = QLabel(f"📍 You clicked: Plot {self.clicked_zone + 1}")
-        this_label.setStyleSheet("font-size: 14px; color: #aaa; background: transparent; border: none;")
+        this_label.setStyleSheet(f"font-size: 14px; color: {COLOR_TEXT_MUTED}; background: transparent; border: none;")
         info_layout.addWidget(this_label)
         
         layout.addWidget(info_frame)
         
         # OK button
         ok_btn = QPushButton("OK")
-        ok_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #5a5a8f;
+        ok_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {COLOR_UPGRADE};
                 color: white;
                 border: none;
                 padding: 12px 40px;
                 font-size: 14px;
                 font-weight: bold;
                 border-radius: 6px;
-            }
-            QPushButton:hover {
-                background-color: #6a6a9f;
-            }
+            }}
+            QPushButton:hover {{
+                background-color: {COLOR_UPGRADE_HOVER};
+            }}
         """)
         ok_btn.clicked.connect(self.accept)
         layout.addWidget(ok_btn, alignment=Qt.AlignmentFlag.AlignCenter)
@@ -167,11 +185,11 @@ class ZoneUnlockDialog(QDialog):
         self.setWindowTitle(f"🌾 Unlock Plot {self.zone_index + 1}")
         self.setMinimumSize(420, 380)
         self.resize(420, 400)
-        
-        self.setStyleSheet("""
-            QDialog {
-                background-color: #2c2c2c;
-            }
+
+        self.setStyleSheet(f"""
+            QDialog {{
+                background-color: {COLOR_BG_DARK};
+            }}
         """)
         
         layout = QVBoxLayout(self)
@@ -194,12 +212,12 @@ class ZoneUnlockDialog(QDialog):
         """Create the header section."""
         frame = QFrame()
         frame.setObjectName("headerFrame")
-        frame.setStyleSheet("""
-            #headerFrame {
-                background-color: #3a4a5a;
-                border: 2px solid #5a8faf;
+        frame.setStyleSheet(f"""
+            #headerFrame {{
+                background-color: {COLOR_SOCIAL_FRAME_BG};
+                border: 2px solid {COLOR_SOCIAL};
                 border-radius: 8px;
-            }
+            }}
         """)
         
         layout = QVBoxLayout(frame)
@@ -214,7 +232,7 @@ class ZoneUnlockDialog(QDialog):
         
         # Title
         title = QLabel(f"Unlock Plot {self.zone_index + 1}?")
-        title.setStyleSheet("font-size: 20px; font-weight: bold; color: #fff; background: transparent; border: none;")
+        title.setStyleSheet(f"font-size: 20px; font-weight: bold; color: {COLOR_TEXT_WHITE}; background: transparent; border: none;")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(title)
         
@@ -224,12 +242,12 @@ class ZoneUnlockDialog(QDialog):
         """Create the info section."""
         frame = QFrame()
         frame.setObjectName("infoFrame")
-        frame.setStyleSheet("""
-            #infoFrame {
-                background-color: #353535;
-                border: 1px solid #555;
+        frame.setStyleSheet(f"""
+            #infoFrame {{
+                background-color: {COLOR_BG_ITEM};
+                border: 1px solid {COLOR_BG_BORDER};
                 border-radius: 6px;
-            }
+            }}
         """)
         
         layout = QVBoxLayout(frame)
@@ -237,14 +255,14 @@ class ZoneUnlockDialog(QDialog):
         layout.setSpacing(8)
         
         # Cost
-        cost_color = "#f0c040" if self.can_afford else "#f66"
+        cost_color = COLOR_TEXT_ACCENT if self.can_afford else "#f66"
         cost_label = QLabel(f"💰 Cost: ${self.cost:,}")
         cost_label.setStyleSheet(f"font-size: 16px; font-weight: bold; color: {cost_color}; background: transparent; border: none;")
         layout.addWidget(cost_label)
         
         # Your money
         money_label = QLabel(f"💵 Your money: ${self.farm.money:,}")
-        money_label.setStyleSheet("font-size: 14px; color: #aaa; background: transparent; border: none;")
+        money_label.setStyleSheet(f"font-size: 14px; color: {COLOR_TEXT_MUTED}; background: transparent; border: none;")
         layout.addWidget(money_label)
         
         # After purchase
@@ -268,7 +286,7 @@ class ZoneUnlockDialog(QDialog):
         
         # Plot progress
         progress = QLabel(f"🌾 Plot {self.zone_index + 1} of {MAX_FARM_ZONES}")
-        progress.setStyleSheet("font-size: 12px; color: #888; background: transparent; border: none; margin-top: 5px;")
+        progress.setStyleSheet(f"font-size: 12px; color: {COLOR_TEXT_DIMMED}; background: transparent; border: none; margin-top: 5px;")
         layout.addWidget(progress)
         
         return frame
@@ -280,20 +298,7 @@ class ZoneUnlockDialog(QDialog):
         
         # Cancel button
         cancel_btn = QPushButton("Cancel")
-        cancel_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #555;
-                color: white;
-                border: none;
-                padding: 12px 30px;
-                font-size: 14px;
-                font-weight: bold;
-                border-radius: 6px;
-            }
-            QPushButton:hover {
-                background-color: #666;
-            }
-        """)
+        cancel_btn.setStyleSheet(neutral_button_style())
         cancel_btn.clicked.connect(self.reject)
         layout.addWidget(cancel_btn)
         
@@ -302,8 +307,8 @@ class ZoneUnlockDialog(QDialog):
         unlock_btn.setEnabled(self.can_afford)
         unlock_btn.setStyleSheet(f"""
             QPushButton {{
-                background-color: {"#5a8f4a" if self.can_afford else "#444"};
-                color: {"white" if self.can_afford else "#888"};
+                background-color: {COLOR_PRIMARY if self.can_afford else COLOR_BG_BORDER};
+                color: {"white" if self.can_afford else COLOR_TEXT_DIMMED};
                 border: none;
                 padding: 12px 30px;
                 font-size: 14px;
@@ -311,7 +316,7 @@ class ZoneUnlockDialog(QDialog):
                 border-radius: 6px;
             }}
             QPushButton:hover {{
-                background-color: {"#6ba85a" if self.can_afford else "#444"};
+                background-color: {COLOR_PRIMARY_HOVER if self.can_afford else COLOR_BG_BORDER};
             }}
         """)
         unlock_btn.clicked.connect(self._on_unlock_clicked)

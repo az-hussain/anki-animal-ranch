@@ -26,12 +26,29 @@ from PyQt6.QtWidgets import (
 
 from ...core.constants import (
     BUILDING_CAPACITIES,
+    BUILDING_DISPLAY_INFO,
     BUILDING_PRODUCTION_BONUSES,
     BUILDING_UPGRADE_COSTS,
     MAX_BUILDING_LEVEL,
     BuildingType,
 )
 from ...utils.logger import get_logger
+from ..theme import (
+    COLOR_BG_BORDER,
+    COLOR_BG_DARK,
+    COLOR_BG_PANEL,
+    COLOR_PRIMARY,
+    COLOR_PRIMARY_FRAME_BG,
+    COLOR_TEXT_ACCENT,
+    COLOR_TEXT_DIMMED,
+    COLOR_TEXT_MUTED,
+    COLOR_TEXT_WHITE,
+    COLOR_UPGRADE,
+    COLOR_UPGRADE_FRAME_BG,
+    move_button_style,
+    neutral_button_style,
+    upgrade_button_style,
+)
 
 if TYPE_CHECKING:
     from ...models.animal import Animal
@@ -39,14 +56,6 @@ if TYPE_CHECKING:
     from ...models.farm import Farm
 
 logger = get_logger(__name__)
-
-
-# Building display info
-BUILDING_DISPLAY = {
-    BuildingType.COOP: {"name": "Chicken Coop", "emoji": "🐔"},
-    BuildingType.PIGSTY: {"name": "Pig Sty", "emoji": "🐷"},
-    BuildingType.BARN: {"name": "Cow Barn", "emoji": "🐄"},
-}
 
 
 class AnimalStatsWidget(QFrame):
@@ -59,13 +68,13 @@ class AnimalStatsWidget(QFrame):
     
     def _setup_ui(self) -> None:
         """Set up the widget UI."""
-        self.setStyleSheet("""
-            AnimalStatsWidget {
-                background-color: #3a3a3a;
-                border: 1px solid #555;
+        self.setStyleSheet(f"""
+            AnimalStatsWidget {{
+                background-color: {COLOR_BG_PANEL};
+                border: 1px solid {COLOR_BG_BORDER};
                 border-radius: 6px;
                 padding: 4px;
-            }
+            }}
         """)
         
         layout = QHBoxLayout(self)
@@ -87,7 +96,7 @@ class AnimalStatsWidget(QFrame):
         # Name and stage
         stage = self.animal.growth_stage.value.capitalize()
         name_label = QLabel(f"{self.animal.type.value.capitalize()} ({stage})")
-        name_label.setStyleSheet("font-size: 13px; font-weight: bold; color: #fff;")
+        name_label.setStyleSheet(f"font-size: 13px; font-weight: bold; color: {COLOR_TEXT_WHITE};")
         info_layout.addWidget(name_label)
         
         # Stats row
@@ -150,20 +159,20 @@ class BuildingDetailsDialog(QDialog):
     
     def _setup_ui(self) -> None:
         """Set up the dialog UI."""
-        display = BUILDING_DISPLAY.get(self.building.type, {"name": "Building", "emoji": "🏠"})
+        display = BUILDING_DISPLAY_INFO.get(self.building.type.value, {"name": "Building", "emoji": "🏠"})
         
         self.setWindowTitle(f"{display['emoji']} {self.building.display_name}")
         self.setMinimumSize(450, 400)
         self.resize(500, 500)
         
-        self.setStyleSheet("""
-            QDialog {
-                background-color: #2c2c2c;
-            }
-            QScrollArea {
+        self.setStyleSheet(f"""
+            QDialog {{
+                background-color: {COLOR_BG_DARK};
+            }}
+            QScrollArea {{
                 border: none;
                 background-color: transparent;
-            }
+            }}
         """)
         
         layout = QVBoxLayout(self)
@@ -180,7 +189,7 @@ class BuildingDetailsDialog(QDialog):
         
         # Animals section
         animals_label = QLabel(f"🐾 Animals ({self.building.current_occupancy}/{self.building.capacity})")
-        animals_label.setStyleSheet("font-size: 14px; font-weight: bold; color: #ccc; margin-top: 10px;")
+        animals_label.setStyleSheet(f"font-size: 14px; font-weight: bold; color: {COLOR_TEXT_MUTED}; margin-top: 10px;")
         layout.addWidget(animals_label)
         
         # Scrollable animals list
@@ -203,37 +212,13 @@ class BuildingDetailsDialog(QDialog):
         
         # Move button
         move_btn = QPushButton("📍 Move")
-        move_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #4a7a9f;
-                color: white;
-                border: none;
-                padding: 10px 25px;
-                font-size: 14px;
-                border-radius: 6px;
-            }
-            QPushButton:hover {
-                background-color: #5a8abf;
-            }
-        """)
+        move_btn.setStyleSheet(move_button_style())
         move_btn.clicked.connect(self._on_move_clicked)
         buttons_layout.addWidget(move_btn)
-        
+
         # Close button
         close_btn = QPushButton("Close")
-        close_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #666;
-                color: white;
-                border: none;
-                padding: 10px 25px;
-                font-size: 14px;
-                border-radius: 6px;
-            }
-            QPushButton:hover {
-                background-color: #777;
-            }
-        """)
+        close_btn.setStyleSheet(neutral_button_style())
         close_btn.clicked.connect(self.close)
         buttons_layout.addWidget(close_btn)
         
@@ -243,12 +228,12 @@ class BuildingDetailsDialog(QDialog):
         """Create the header section."""
         frame = QFrame()
         frame.setObjectName("headerFrame")
-        frame.setStyleSheet("""
-            #headerFrame {
-                background-color: #3a4a3a;
-                border: 2px solid #5a8f4a;
+        frame.setStyleSheet(f"""
+            #headerFrame {{
+                background-color: {COLOR_PRIMARY_FRAME_BG};
+                border: 2px solid {COLOR_PRIMARY};
                 border-radius: 8px;
-            }
+            }}
         """)
         
         layout = QHBoxLayout(frame)
@@ -265,12 +250,12 @@ class BuildingDetailsDialog(QDialog):
         info_layout.setSpacing(4)
         
         name_label = QLabel(self.building.display_name)
-        name_label.setStyleSheet("font-size: 18px; font-weight: bold; color: #fff; background: transparent; border: none;")
+        name_label.setStyleSheet(f"font-size: 18px; font-weight: bold; color: {COLOR_TEXT_WHITE}; background: transparent; border: none;")
         name_label.setMinimumWidth(200)
         info_layout.addWidget(name_label)
         
         level_label = QLabel(f"Level {self.building.level} / {MAX_BUILDING_LEVEL}")
-        level_label.setStyleSheet("font-size: 12px; color: #aaa; background: transparent; border: none;")
+        level_label.setStyleSheet(f"font-size: 12px; color: {COLOR_TEXT_MUTED}; background: transparent; border: none;")
         info_layout.addWidget(level_label)
         
         capacity_label = QLabel(f"Capacity: {self.building.current_occupancy}/{self.building.capacity}")
@@ -285,12 +270,12 @@ class BuildingDetailsDialog(QDialog):
         """Create the upgrade section."""
         frame = QFrame()
         frame.setObjectName("upgradeFrame")
-        frame.setStyleSheet("""
-            #upgradeFrame {
-                background-color: #3a3a4a;
-                border: 2px solid #5a5a8f;
+        frame.setStyleSheet(f"""
+            #upgradeFrame {{
+                background-color: {COLOR_UPGRADE_FRAME_BG};
+                border: 2px solid {COLOR_UPGRADE};
                 border-radius: 8px;
-            }
+            }}
         """)
         
         layout = QVBoxLayout(frame)
@@ -318,7 +303,7 @@ class BuildingDetailsDialog(QDialog):
             
             # Comparison text - using separate labels for better rendering
             level_text = QLabel(f"Level {current_level} → Level {next_level}")
-            level_text.setStyleSheet("font-size: 13px; color: #fff; background: transparent; border: none;")
+            level_text.setStyleSheet(f"font-size: 13px; color: {COLOR_TEXT_WHITE}; background: transparent; border: none;")
             layout.addWidget(level_text)
             
             cap_text = QLabel(f"📦 Capacity: {current_cap} → {next_cap} (+{next_cap - current_cap})")
@@ -337,27 +322,14 @@ class BuildingDetailsDialog(QDialog):
             btn_row.setSpacing(10)
             
             cost_label = QLabel(f"💰 Cost: ${cost:,}")
-            cost_label.setStyleSheet(f"font-size: 14px; font-weight: bold; color: {'#f0c040' if can_afford else '#f66'}; background: transparent; border: none;")
+            cost_label.setStyleSheet(f"font-size: 14px; font-weight: bold; color: {COLOR_TEXT_ACCENT if can_afford else '#f66'}; background: transparent; border: none;")
             btn_row.addWidget(cost_label)
             
             btn_row.addStretch()
             
             self.upgrade_btn = QPushButton(f"⬆️ Upgrade to Lv.{next_level}")
             self.upgrade_btn.setEnabled(can_afford)
-            self.upgrade_btn.setStyleSheet(f"""
-                QPushButton {{
-                    background-color: {"#5a5a8f" if can_afford else "#444"};
-                    color: {"white" if can_afford else "#888"};
-                    border: none;
-                    padding: 10px 20px;
-                    font-size: 13px;
-                    font-weight: bold;
-                    border-radius: 6px;
-                }}
-                QPushButton:hover {{
-                    background-color: {"#6a6a9f" if can_afford else "#444"};
-                }}
-            """)
+            self.upgrade_btn.setStyleSheet(upgrade_button_style(enabled=can_afford))
             self.upgrade_btn.clicked.connect(self._on_upgrade_clicked)
             btn_row.addWidget(self.upgrade_btn)
             
@@ -397,7 +369,7 @@ class BuildingDetailsDialog(QDialog):
         
         if not animals:
             empty_label = QLabel("No animals yet. Buy some from the Shop!")
-            empty_label.setStyleSheet("color: #888; font-size: 13px; padding: 20px;")
+            empty_label.setStyleSheet(f"color: {COLOR_TEXT_DIMMED}; font-size: 13px; padding: 20px;")
             empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             self.animals_layout.addWidget(empty_label)
         else:

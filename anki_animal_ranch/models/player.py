@@ -9,6 +9,64 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from ..core.constants import ProductQuality, ProductType
+
+
+def parse_inventory_item(
+    key: str, count: int
+) -> tuple[ProductType, ProductQuality, int] | None:
+    """
+    Parse a single inventory key into a typed tuple.
+
+    Handles both the current format ("egg_premium") and the legacy format
+    ("egg" with no quality suffix, treated as BASIC quality).
+
+    Args:
+        key: Inventory key such as "egg_premium" or legacy "egg"
+        count: Quantity stored under this key
+
+    Returns:
+        (ProductType, ProductQuality, count) or None if the key is unrecognised.
+    """
+    if count <= 0:
+        return None
+    parts = key.split("_")
+    if len(parts) >= 2:
+        try:
+            product_type = ProductType(parts[0])
+            quality = ProductQuality(parts[1])
+            return (product_type, quality, count)
+        except (ValueError, KeyError):
+            pass
+    # Legacy format — single-word key, no quality suffix
+    try:
+        product_type = ProductType(key)
+        return (product_type, ProductQuality.BASIC, count)
+    except ValueError:
+        return None
+
+
+def parse_inventory(
+    inventory: dict[str, int],
+) -> list[tuple[ProductType, ProductQuality, int]]:
+    """
+    Parse the full player inventory into typed tuples.
+
+    Skips empty slots and unrecognised keys.
+
+    Args:
+        inventory: Raw inventory dict from Player.inventory
+
+    Returns:
+        List of (ProductType, ProductQuality, count) for all non-empty slots.
+    """
+    result = []
+    for key, count in inventory.items():
+        parsed = parse_inventory_item(key, count)
+        if parsed is not None:
+            result.append(parsed)
+    return result
+
 
 @dataclass
 class Player:

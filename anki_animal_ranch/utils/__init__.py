@@ -25,13 +25,6 @@ from .math_utils import (
     world_to_grid,
     world_to_screen,
 )
-from .pathfinding import (
-    PathFollower,
-    find_path,
-    simplify_path,
-    smooth_path,
-)
-
 __all__ = [
     # Logging
     "setup_logging",
@@ -54,9 +47,4 @@ __all__ = [
     "angle_between",
     "direction_from_angle",
     "get_sorting_key",
-    # Pathfinding
-    "find_path",
-    "smooth_path",
-    "simplify_path",
-    "PathFollower",
 ]

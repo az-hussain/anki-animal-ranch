@@ -23,6 +23,16 @@ from PyQt6.QtWidgets import (
 from ...data.account_manager import AccountManager, get_account_manager
 from ...network import check_username_available, create_account, is_online_available
 from ...utils.logger import get_logger
+from ..theme import (
+    COLOR_BG_BORDER,
+    COLOR_BG_DARK,
+    COLOR_BG_PANEL,
+    COLOR_BG_SELECTED,
+    COLOR_PRIMARY,
+    COLOR_PRIMARY_HOVER,
+    COLOR_TEXT_DIMMED,
+    COLOR_TEXT_MUTED,
+)
 
 if TYPE_CHECKING:
     from ...models.farm import Farm
@@ -58,46 +68,46 @@ class AccountCreationDialog(QDialog):
         self.setMinimumSize(450, 300)
         self.setModal(True)
         
-        self.setStyleSheet("""
-            QDialog {
-                background-color: #2c2c2c;
-            }
-            QLabel {
+        self.setStyleSheet(f"""
+            QDialog {{
+                background-color: {COLOR_BG_DARK};
+            }}
+            QLabel {{
                 color: #eee;
-            }
-            QLineEdit {
-                background-color: #3a3a3a;
+            }}
+            QLineEdit {{
+                background-color: {COLOR_BG_PANEL};
                 color: white;
-                border: 2px solid #555;
+                border: 2px solid {COLOR_BG_BORDER};
                 border-radius: 6px;
                 padding: 10px;
                 font-size: 16px;
-            }
-            QLineEdit:focus {
-                border-color: #5a8f4a;
-            }
-            QPushButton {
-                background-color: #5a8f4a;
+            }}
+            QLineEdit:focus {{
+                border-color: {COLOR_PRIMARY};
+            }}
+            QPushButton {{
+                background-color: {COLOR_PRIMARY};
                 color: white;
                 border: none;
                 padding: 12px 25px;
                 font-size: 14px;
                 font-weight: bold;
                 border-radius: 6px;
-            }
-            QPushButton:hover {
-                background-color: #6ba85a;
-            }
-            QPushButton:disabled {
-                background-color: #444;
-                color: #888;
-            }
-            QPushButton#cancelBtn {
-                background-color: #4a4a4a;
-            }
-            QPushButton#cancelBtn:hover {
+            }}
+            QPushButton:hover {{
+                background-color: {COLOR_PRIMARY_HOVER};
+            }}
+            QPushButton:disabled {{
+                background-color: {COLOR_BG_BORDER};
+                color: {COLOR_TEXT_DIMMED};
+            }}
+            QPushButton#cancelBtn {{
+                background-color: {COLOR_BG_SELECTED};
+            }}
+            QPushButton#cancelBtn:hover {{
                 background-color: #5a5a5a;
-            }
+            }}
         """)
         
         layout = QVBoxLayout(self)
@@ -106,7 +116,7 @@ class AccountCreationDialog(QDialog):
         
         # Title
         title = QLabel("Create Your Online Account")
-        title.setStyleSheet("font-size: 20px; font-weight: bold; color: #5a8f4a;")
+        title.setStyleSheet(f"font-size: 20px; font-weight: bold; color: {COLOR_PRIMARY};")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(title)
         
@@ -115,7 +125,7 @@ class AccountCreationDialog(QDialog):
             "Choose a username to enable online features like visiting friends' farms.\n\n"
             "⚠️ Your username cannot be changed after creation!"
         )
-        info.setStyleSheet("font-size: 13px; color: #aaa;")
+        info.setStyleSheet(f"font-size: 13px; color: {COLOR_TEXT_MUTED};")
         info.setWordWrap(True)
         info.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(info)
@@ -135,7 +145,7 @@ class AccountCreationDialog(QDialog):
         
         # Validation hint
         self.hint_label = QLabel("Lowercase letters, numbers, and underscores only")
-        self.hint_label.setStyleSheet("font-size: 11px; color: #888;")
+        self.hint_label.setStyleSheet(f"font-size: 11px; color: {COLOR_TEXT_DIMMED};")
         layout.addWidget(self.hint_label)
         
         layout.addStretch()
@@ -170,11 +180,11 @@ class AccountCreationDialog(QDialog):
         
         if not text:
             self.hint_label.setText("Lowercase letters, numbers, and underscores only")
-            self.hint_label.setStyleSheet("font-size: 11px; color: #888;")
+            self.hint_label.setStyleSheet(f"font-size: 11px; color: {COLOR_TEXT_DIMMED};")
             self.create_btn.setEnabled(False)
         elif valid:
             self.hint_label.setText("✓ Username looks good!")
-            self.hint_label.setStyleSheet("font-size: 11px; color: #5a8f4a;")
+            self.hint_label.setStyleSheet(f"font-size: 11px; color: {COLOR_PRIMARY};")
             self.create_btn.setEnabled(True)
         else:
             self.hint_label.setText(f"✗ {error}")

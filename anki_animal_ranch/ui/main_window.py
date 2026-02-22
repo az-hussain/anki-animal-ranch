@@ -11,21 +11,14 @@ from ..utils.logger import get_logger
 from typing import TYPE_CHECKING
 
 from PyQt6.QtCore import Qt, QTimer
-from PyQt6.QtGui import QCloseEvent, QColor, QKeyEvent
+from PyQt6.QtGui import QCloseEvent, QKeyEvent
 from PyQt6.QtWidgets import (
-    QFrame,
     QHBoxLayout,
-    QLabel,
     QMainWindow,
-    QPushButton,
-    QVBoxLayout,
     QWidget,
 )
 
 from ..core.constants import (
-    ANIMAL_PURCHASE_PRICES,
-    BUILDING_PURCHASE_COSTS,
-    DECORATION_COSTS,
     DECORATION_FOOTPRINTS,
     DECORATION_INFO,
     DEFAULT_WINDOW_HEIGHT,
@@ -33,28 +26,26 @@ from ..core.constants import (
     FRAME_TIME_MS,
     MIN_WINDOW_HEIGHT,
     MIN_WINDOW_WIDTH,
-    PRODUCT_BASE_PRICES,
-    PRODUCT_QUALITY_MULTIPLIERS,
     VERSION,
     AnimalType,
     BuildingType,
     DecorationType,
     Direction,
-    FeedType,
-    ProductQuality,
-    ProductType,
+    Events,
 )
-from ..core.constants import Events
 from ..core.event_bus import event_bus
+from .panels.side_panel import SidePanel
+from .placement_state import PlacementState, VisitState
 from ..core.time_system import TimeSystem
 from ..data import get_save_manager
-from ..models.animal import Animal
 from ..models.building import Building
-from ..models.decoration import Decoration
 from ..models.farm import Farm
+from ..services.shop_service import purchase_animal, purchase_building, purchase_decoration
+
 from ..rendering import IsometricView
 from ..rendering.sprite import AnimalSprite, DecorationSprite, PenSprite
 from ..systems import GrowthSystem
+from .sprite_manager import SpriteManager
 
 if TYPE_CHECKING:
     from aqt.main import AnkiQt
@@ -95,27 +86,12 @@ class MainWindow(QMainWindow):
         self._game_timer: QTimer | None = None
         self._is_running = False
         
-        # Building placement mode
-        self._placement_mode = False
-        self._placement_building_type: BuildingType | None = None
-        self._placement_preview_sprite = None
-        self._move_building_id: str | None = None  # Building ID when in move mode
+        # Placement and visit state
+        self._placement = PlacementState()
+        self._visit = VisitState()
         
-        # Decoration placement mode
-        self._placement_decoration_type: DecorationType | None = None
-        self._placement_direction: Direction = Direction.EAST
-        self._move_decoration_id: str | None = None
-        
-        # Friend visit mode
-        self._visiting_friend: bool = False
-        self._visiting_username: str | None = None
-        self._home_farm: Farm | None = None  # Store home farm when visiting
-        self._home_unlocked_zones: int | None = None  # Store home zones when visiting
-        
-        # Track sprites by entity ID
-        self._building_sprites: dict[str, PenSprite] = {}
-        self._animal_sprites: dict[str, AnimalSprite] = {}
-        self._decoration_sprites: dict[str, DecorationSprite] = {}
+        # Sprite lifecycle manager (created in _setup_ui after _iso_view exists)
+        self._sprites: SpriteManager | None = None
         
         self._setup_window()
         self._setup_ui()
@@ -160,190 +136,20 @@ class MainWindow(QMainWindow):
         self._iso_view.sprite_clicked.connect(self._on_sprite_clicked)
         
         main_layout.addWidget(self._iso_view, stretch=3)
-        
+        self._sprites = SpriteManager(self._iso_view)
+
         # =================================================================
         # Side Panel
         # =================================================================
-        side_panel = QFrame()
-        side_panel.setFixedWidth(280)
-        side_panel.setStyleSheet("""
-            QFrame {
-                background-color: #2c2c2c;
-                border-left: 2px solid #444;
-            }
-        """)
-        
-        side_layout = QVBoxLayout(side_panel)
-        side_layout.setContentsMargins(10, 10, 10, 10)
-        side_layout.setSpacing(10)
-        
-        # Title
-        title_label = QLabel("🐄 Farm Status")
-        title_label.setStyleSheet("""
-            QLabel {
-                color: #f0c040;
-                font-size: 18px;
-                font-weight: bold;
-                padding: 10px;
-            }
-        """)
-        side_layout.addWidget(title_label)
-        
-        # Stats display
-        self.money_label = QLabel("💰 Money: $1,500")
-        self.time_label = QLabel("🕐 Spring Day 1, 06:00")
-        self.animals_label = QLabel("🐔 Animals: 0")
-        self.zones_label = QLabel("🌾 Plots: 1/12")
-        
-        for label in [self.money_label, self.time_label, self.animals_label, self.zones_label]:
-            label.setStyleSheet("""
-                QLabel {
-                    color: white;
-                    font-size: 14px;
-                    padding: 5px;
-                    background-color: #3a3a3a;
-                    border-radius: 4px;
-                }
-            """)
-            side_layout.addWidget(label)
-        
-        # Inventory section
-        inventory_title = QLabel("📦 Inventory")
-        inventory_title.setStyleSheet("""
-            QLabel {
-                color: #f0c040;
-                font-size: 16px;
-                font-weight: bold;
-                padding: 8px 5px 4px 5px;
-                margin-top: 5px;
-            }
-        """)
-        side_layout.addWidget(inventory_title)
-        
-        # Inventory display (eggs, milk, truffles)
-        self.inventory_label = QLabel("🥚 Eggs: 0\n🥛 Milk: 0\n🍄 Truffles: 0")
-        self.inventory_label.setStyleSheet("""
-            QLabel {
-                color: #bbb;
-                font-size: 13px;
-                padding: 8px;
-                background-color: #353535;
-                border-radius: 4px;
-                border: 1px solid #444;
-            }
-        """)
-        self.inventory_label.setWordWrap(True)
-        self.inventory_label.setMinimumWidth(180)
-        side_layout.addWidget(self.inventory_label)
-        
-        # Feed section
-        feed_title = QLabel("🌾 Feed Supply")
-        feed_title.setStyleSheet("""
-            QLabel {
-                color: #f0c040;
-                font-size: 16px;
-                font-weight: bold;
-                padding: 8px 5px 4px 5px;
-                margin-top: 5px;
-            }
-        """)
-        side_layout.addWidget(feed_title)
-        
-        # Feed status display
-        self.feed_label = QLabel("No animals yet")
-        self.feed_label.setStyleSheet("""
-            QLabel {
-                color: #bbb;
-                font-size: 12px;
-                padding: 8px;
-                background-color: #353535;
-                border-radius: 4px;
-                border: 1px solid #444;
-            }
-        """)
-        self.feed_label.setWordWrap(True)
-        self.feed_label.setMinimumWidth(180)
-        side_layout.addWidget(self.feed_label)
-        
-        # Spacer
-        side_layout.addSpacing(10)
-        
-        # Placement mode indicator
-        self.placement_label = QLabel("")
-        self.placement_label.setStyleSheet("""
-            QLabel {
-                color: #f0c040;
-                font-size: 13px;
-                padding: 8px;
-                background-color: #4a4a2a;
-                border-radius: 4px;
-                border: 1px solid #6a6a3a;
-            }
-        """)
-        self.placement_label.setWordWrap(True)
-        self.placement_label.hide()
-        side_layout.addWidget(self.placement_label)
-        
-        # Action buttons
-        button_style = """
-            QPushButton {
-                background-color: #5a8f4a;
-                color: white;
-                border: none;
-                padding: 12px;
-                font-size: 14px;
-                font-weight: bold;
-                border-radius: 6px;
-            }
-            QPushButton:hover {
-                background-color: #6ba85a;
-            }
-            QPushButton:pressed {
-                background-color: #4a7f3a;
-            }
-        """
-        
-        # Shop button (replaced by Cancel when in placement mode)
-        self.shop_btn = QPushButton("🏪 Shop")
-        self.shop_btn.setStyleSheet(button_style)
-        self.shop_btn.clicked.connect(self._on_shop_clicked)
-        side_layout.addWidget(self.shop_btn)
-        
-        # Cancel placement button (replaces Shop when in placement mode)
-        self.cancel_btn = QPushButton("❌ Cancel Placement")
-        self.cancel_btn.setStyleSheet(button_style.replace("#5a8f4a", "#8f4a4a").replace("#6ba85a", "#a85a5a").replace("#4a7f3a", "#7f3a3a"))
-        self.cancel_btn.clicked.connect(self._cancel_placement_mode)
-        self.cancel_btn.hide()
-        side_layout.addWidget(self.cancel_btn)
-        
-        self.market_btn = QPushButton("📦 Market")
-        self.market_btn.setStyleSheet(button_style)
-        self.market_btn.clicked.connect(self._on_market_clicked)
-        side_layout.addWidget(self.market_btn)
-        
-        # Visit Friend button
-        self.visit_btn = QPushButton("👥 Visit Friend")
-        self.visit_btn.setStyleSheet(button_style.replace("#5a8f4a", "#4a6a8f").replace("#6ba85a", "#5a7aa5").replace("#4a7f3a", "#3a5a7f"))
-        self.visit_btn.clicked.connect(self._on_visit_friend_clicked)
-        side_layout.addWidget(self.visit_btn)
-        
-        # Return Home button (shown when visiting)
-        self.return_home_btn = QPushButton("🏠 Return Home")
-        self.return_home_btn.setStyleSheet(button_style.replace("#5a8f4a", "#8f6a4a").replace("#6ba85a", "#a87a5a").replace("#4a7f3a", "#7f5a3a"))
-        self.return_home_btn.clicked.connect(self._on_return_home_clicked)
-        self.return_home_btn.hide()
-        side_layout.addWidget(self.return_home_btn)
-        
-        # Spacer
-        side_layout.addStretch()
-        
-        # Settings button
-        settings_btn = QPushButton("⚙️ Settings")
-        settings_btn.setStyleSheet(button_style.replace("#5a8f4a", "#666").replace("#6ba85a", "#777").replace("#4a7f3a", "#555"))
-        settings_btn.clicked.connect(self._on_settings_clicked)
-        side_layout.addWidget(settings_btn)
-        
-        main_layout.addWidget(side_panel)
+        self.side_panel = SidePanel()
+        self.side_panel.shop_clicked.connect(self._on_shop_clicked)
+        self.side_panel.market_clicked.connect(self._on_market_clicked)
+        self.side_panel.visit_friend_clicked.connect(self._on_visit_friend_clicked)
+        self.side_panel.return_home_clicked.connect(self._on_return_home_clicked)
+        self.side_panel.cancel_placement_clicked.connect(self._cancel_placement_mode)
+        self.side_panel.settings_clicked.connect(self._on_settings_clicked)
+
+        main_layout.addWidget(self.side_panel)
     
     def _setup_game(self) -> None:
         """Initialize game state and systems."""
@@ -383,8 +189,8 @@ class MainWindow(QMainWindow):
                 self._iso_view.set_season(self.time_system.current_time.season)
             
             # If we loaded a save, recreate building/animal sprites
-            if loaded is not None:
-                self._recreate_sprites_from_save()
+            if loaded is not None and self._sprites is not None:
+                self._sprites.recreate_from_save(self.farm)
             
             # Start animation
             self._iso_view.start_animation()
@@ -443,159 +249,10 @@ class MainWindow(QMainWindow):
         self._update_ui()
     
     def _update_ui(self) -> None:
-        """Update UI elements to reflect current game state."""
+        """Update all HUD elements to reflect current game state."""
         if self.farm is None or self.time_system is None:
             return
-        
-        # Update labels
-        self.money_label.setText(f"💰 Money: ${self.farm.money:,}")
-        self.time_label.setText(f"🕐 {self.time_system.current_time.format_full()}")
-        self.animals_label.setText(f"🐔 Animals: {len(self.farm.animals)}")
-        
-        # Update zones info
-        from ..core.constants import MAX_FARM_ZONES
-        zones_text = f"🌾 Plots: {self.farm.unlocked_zones}/{MAX_FARM_ZONES}"
-        if self.farm.unlocked_zones < MAX_FARM_ZONES:
-            next_cost = self.farm.next_zone_cost
-            zones_text += f" (next: ${next_cost:,})"
-        self.zones_label.setText(zones_text)
-        
-        # Update inventory display (simple totals - quality shown in Market)
-        inventory = self.farm.player.inventory
-        total_value = 0
-        
-        # Count products by type (summing all qualities)
-        product_totals: dict[ProductType, int] = {pt: 0 for pt in ProductType}
-        
-        for key, count in inventory.items():
-            if count <= 0:
-                continue
-            # Parse key format: "egg_basic", "milk_premium", etc.
-            parts = key.split("_")
-            if len(parts) >= 2:
-                try:
-                    product_type = ProductType(parts[0])
-                    quality = ProductQuality(parts[1])
-                    product_totals[product_type] += count
-                    # Calculate value with quality multiplier
-                    base_price = PRODUCT_BASE_PRICES.get(product_type, 10)
-                    quality_mult = PRODUCT_QUALITY_MULTIPLIERS.get(quality, 1.0)
-                    total_value += int(count * base_price * quality_mult)
-                except (ValueError, KeyError):
-                    # Legacy format without quality - treat as basic
-                    try:
-                        product_type = ProductType(key)
-                        product_totals[product_type] += count
-                        total_value += count * PRODUCT_BASE_PRICES.get(product_type, 10)
-                    except ValueError:
-                        pass
-            else:
-                # Legacy format without quality
-                try:
-                    product_type = ProductType(key)
-                    product_totals[product_type] += count
-                    total_value += count * PRODUCT_BASE_PRICES.get(product_type, 10)
-                except ValueError:
-                    pass
-        
-        # Build simple inventory text (just totals)
-        eggs = product_totals.get(ProductType.EGG, 0)
-        milk = product_totals.get(ProductType.MILK, 0)
-        truffles = product_totals.get(ProductType.TRUFFLE, 0)
-        
-        inventory_text = f"🥚 Eggs: {eggs}\n🥛 Milk: {milk}\n🍄 Truffles: {truffles}"
-        if total_value > 0:
-            inventory_text += f"\n\n💵 Value: ${total_value:,}"
-        
-        self.inventory_label.setText(inventory_text)
-        
-        # Update feed status
-        self._update_feed_display()
-    def _update_feed_display(self) -> None:
-        """Update the feed status display."""
-        if self.farm is None:
-            return
-        
-        feed_status = self.farm.get_feed_status()
-        
-        # Check if we have any animals
-        total_animals = len(self.farm.animals)
-        if total_animals == 0:
-            self.feed_label.setText("No animals yet")
-            self.feed_label.setStyleSheet("""
-                QLabel {
-                    color: #888;
-                    font-size: 12px;
-                    padding: 8px;
-                    background-color: #353535;
-                    border-radius: 4px;
-                    border: 1px solid #444;
-                }
-            """)
-            return
-        
-        # Build feed status text
-        feed_lines = []
-        has_warning = False
-        
-        feed_emojis = {
-            FeedType.CHICKEN_FEED: "🐔",
-            FeedType.PIG_FEED: "🐷",
-            FeedType.COW_FEED: "🐄",
-        }
-        
-        for feed_type, status in feed_status.items():
-            animal_count = status.get("animal_count", 0)
-            if animal_count == 0:
-                continue
-            
-            amount = status.get("amount", 0)
-            days = status.get("days_remaining", float('inf'))
-            emoji = feed_emojis.get(feed_type, "🌾")
-            
-            if days == float('inf') or days > 30:
-                days_text = "30+ days"
-                status_emoji = "✅"
-            elif days < 10:
-                days_text = f"{days:.0f} days"
-                status_emoji = "⚠️"
-                has_warning = True
-            else:
-                days_text = f"{days:.0f} days"
-                status_emoji = "✅"
-            
-            feed_lines.append(f"{emoji} {amount} ({days_text}) {status_emoji}")
-        
-        if feed_lines:
-            feed_text = "\n".join(feed_lines)
-        else:
-            feed_text = "No feed needed"
-        
-        # Update style based on warning status
-        if has_warning:
-            self.feed_label.setStyleSheet("""
-                QLabel {
-                    color: #fa8;
-                    font-size: 12px;
-                    padding: 8px;
-                    background-color: #4a3a2a;
-                    border-radius: 4px;
-                    border: 1px solid #6a4a2a;
-                }
-            """)
-        else:
-            self.feed_label.setStyleSheet("""
-                QLabel {
-                    color: #8a8;
-                    font-size: 12px;
-                    padding: 8px;
-                    background-color: #353535;
-                    border-radius: 4px;
-                    border: 1px solid #444;
-                }
-            """)
-        
-        self.feed_label.setText(feed_text)
+        self.side_panel.refresh(self.farm, self.time_system)
     
     # =========================================================================
     # Tile Click Handlers
@@ -606,7 +263,7 @@ class MainWindow(QMainWindow):
         logger.info(f"Tile clicked: ({grid_x}, {grid_y})")
         
         # Block interactions in visit mode
-        if self._visiting_friend:
+        if self._visit.active:
             return
         
         if self._iso_view is None or self._iso_view.grid is None:
@@ -618,12 +275,12 @@ class MainWindow(QMainWindow):
             return
         
         # Handle building placement mode
-        if self._placement_mode and self._placement_building_type is not None:
+        if self._placement.active and self._placement.building_type is not None:
             self._place_building(grid_x, grid_y)
             return
         
         # Handle decoration placement mode
-        if self._placement_mode and self._placement_decoration_type is not None:
+        if self._placement.active and self._placement.decoration_type is not None:
             self._place_decoration(grid_x, grid_y)
             return
         
@@ -650,11 +307,11 @@ class MainWindow(QMainWindow):
         logger.info(f"Sprite clicked: {sprite}")
         
         # Block interactions in placement/move mode
-        if self._placement_mode:
+        if self._placement.active:
             return
         
         # Block interactions in visit mode (view only)
-        if self._visiting_friend:
+        if self._visit.active:
             return
         
         # Check if it's a building (PenSprite)
@@ -708,10 +365,10 @@ class MainWindow(QMainWindow):
             return
         
         # Store the decoration we're moving
-        self._move_decoration_id = decoration_id
-        self._placement_mode = True
-        self._placement_decoration_type = decoration.type
-        self._placement_direction = decoration.direction
+        self._placement.move_decoration_id = decoration_id
+        self._placement.active = True
+        self._placement.decoration_type = decoration.type
+        self._placement.direction = decoration.direction
         
         # Get footprint and info
         footprint = DECORATION_FOOTPRINTS.get(decoration.type, (1, 1))
@@ -719,22 +376,19 @@ class MainWindow(QMainWindow):
         can_rotate = info.get("can_rotate", False)
         
         # Update UI with same format as placing
-        facing_label = "→ Right" if self._placement_direction == Direction.EAST else "← Left (Flipped)"
+        facing_label = "→ Right" if self._placement.direction == Direction.EAST else "← Left (Flipped)"
         if can_rotate:
-            self.placement_label.setText(
+            label_text = (
                 f"📍 Moving: {info.get('name', decoration.type.value)}\n"
                 f"Facing: {facing_label}\n"
                 f"Press R to flip • ESC to cancel"
             )
         else:
-            self.placement_label.setText(
+            label_text = (
                 f"📍 Moving: {info.get('name', decoration.type.value)}\n"
                 f"Click to place • ESC to cancel"
             )
-        self.placement_label.show()
-        self.shop_btn.hide()
-        self.market_btn.hide()
-        self.cancel_btn.show()
+        self.side_panel.set_placement_mode(True, label_text)
         
         # Show placement preview with grid
         if self._iso_view is not None:
@@ -753,9 +407,8 @@ class MainWindow(QMainWindow):
             logger.info(f"Deleted decoration {decoration_id}")
         
         # Remove sprite
-        if decoration_id in self._decoration_sprites:
-            sprite = self._decoration_sprites.pop(decoration_id)
-            self._iso_view.scene().removeItem(sprite)
+        if self._sprites:
+            self._sprites.remove_decoration_sprite(decoration_id)
         
         # Save and update
         self._update_ui()
@@ -777,23 +430,20 @@ class MainWindow(QMainWindow):
             return
         
         # Enter move mode
-        self._move_building_id = building_id
-        self._placement_mode = True
-        self._placement_building_type = building.type
+        self._placement.move_building_id = building_id
+        self._placement.active = True
+        self._placement.building_type = building.type
         
         # Update UI
         from ..core.constants import BUILDING_FOOTPRINTS
         footprint = BUILDING_FOOTPRINTS.get(building.type, (2, 2))
         
-        self.placement_label.setText(
+        self.side_panel.set_placement_mode(
+            True,
             f"📍 Moving: {building.display_name}\n"
             f"Click on the farm to place ({footprint[0]}x{footprint[1]} tiles)\n"
-            f"Press ESC or click Cancel to cancel"
+            f"Press ESC or click Cancel to cancel",
         )
-        self.placement_label.show()
-        self.shop_btn.hide()
-        self.market_btn.hide()
-        self.cancel_btn.show()
         
         # Show placement preview with grid
         if self._iso_view is not None:
@@ -839,22 +489,19 @@ class MainWindow(QMainWindow):
     
     def _start_placement_mode(self, building_type: BuildingType) -> None:
         """Start building placement mode."""
-        self._placement_mode = True
-        self._placement_building_type = building_type
+        self._placement.active = True
+        self._placement.building_type = building_type
         
         # Update UI
         from ..core.constants import BUILDING_FOOTPRINTS
         footprint = BUILDING_FOOTPRINTS.get(building_type, (2, 2))
         
-        self.placement_label.setText(
+        self.side_panel.set_placement_mode(
+            True,
             f"📍 Placing: {building_type.value.replace('_', ' ').title()}\n"
             f"Click on the farm to place ({footprint[0]}x{footprint[1]} tiles)\n"
-            f"Press ESC or click Cancel to cancel"
+            f"Press ESC or click Cancel to cancel",
         )
-        self.placement_label.show()
-        self.shop_btn.hide()
-        self.market_btn.hide()
-        self.cancel_btn.show()
         
         # Show placement preview with grid
         if self._iso_view is not None:
@@ -864,17 +511,9 @@ class MainWindow(QMainWindow):
     
     def _cancel_placement_mode(self) -> None:
         """Cancel building/decoration placement mode."""
-        self._placement_mode = False
-        self._placement_building_type = None
-        self._placement_decoration_type = None
-        self._placement_direction = Direction.EAST
-        self._move_building_id = None
-        self._move_decoration_id = None
+        self._placement.reset()
         
-        self.placement_label.hide()
-        self.cancel_btn.hide()
-        self.shop_btn.show()
-        self.market_btn.show()
+        self.side_panel.set_placement_mode(False)
         
         # Hide placement preview and grid
         if self._iso_view is not None:
@@ -887,27 +526,27 @@ class MainWindow(QMainWindow):
         if self.farm is None or self._iso_view is None or self._iso_view.grid is None:
             return
         
-        if self._placement_building_type is None:
+        if self._placement.building_type is None:
             return
         
-        building_type = self._placement_building_type
+        building_type = self._placement.building_type
         
         from ..core.constants import BUILDING_FOOTPRINTS
         footprint = BUILDING_FOOTPRINTS.get(building_type, (2, 2))
         width, height = footprint
         
         # Check if we're in move mode
-        is_move_mode = self._move_building_id is not None
+        is_move_mode = self._placement.move_building_id is not None
         
         # For move mode, we need to temporarily clear the old building's tiles
         # so we can check if the new position is valid
         old_position = None
         if is_move_mode:
-            building = self.farm.buildings.get(self._move_building_id)
+            building = self.farm.buildings.get(self._placement.move_building_id)
             if building:
                 old_position = building.position
                 # Temporarily clear old tiles
-                self._iso_view.grid.clear_building(self._move_building_id)
+                self._iso_view.grid.clear_building(self._placement.move_building_id)
         
         # Check if we can place here
         if not self._iso_view.grid.can_place_building(grid_x, grid_y, width, height):
@@ -915,7 +554,7 @@ class MainWindow(QMainWindow):
             # Restore old tiles if in move mode
             if is_move_mode and old_position:
                 self._iso_view.grid.mark_building(
-                    self._move_building_id,
+                    self._placement.move_building_id,
                     old_position[0], old_position[1],
                     width, height
                 )
@@ -923,64 +562,25 @@ class MainWindow(QMainWindow):
         
         if is_move_mode:
             # === MOVE EXISTING BUILDING ===
-            building = self.farm.buildings.get(self._move_building_id)
+            building = self.farm.buildings.get(self._placement.move_building_id)
             if building is None:
                 return
-            
-            # Update building position
+
             building.position = (grid_x, grid_y)
-            
-            # Mark new tiles as occupied
             self._iso_view.grid.mark_building(building.id, grid_x, grid_y, width, height)
-            
-            # Update sprite position
-            pen_sprite = self._building_sprites.get(building.id)
-            if pen_sprite:
-                pen_sprite.set_world_pos(float(grid_x), float(grid_y))
-                
-                # Also need to move animal sprites inside this building
-                for animal_id in building.animals:
-                    animal_sprite = self._animal_sprites.get(animal_id)
-                    if animal_sprite:
-                        # Update the sprite's pen bounds
-                        animal_sprite.set_pen_bounds(
-                            grid_x, grid_y,
-                            grid_x + width, grid_y + height
-                        )
-            
+            if self._sprites:
+                self._sprites.move_building_sprite(building, grid_x, grid_y, width, height)
             logger.info(f"Moved {building.display_name} to ({grid_x}, {grid_y})")
-            
-            # Clear move mode
-            self._move_building_id = None
+            self._placement.move_building_id = None
         else:
             # === CREATE NEW BUILDING ===
-            # Get cost and check affordability
-            cost = BUILDING_PURCHASE_COSTS.get(building_type, 500)
-            if not self.farm.spend_money(cost, f"Purchase {building_type.value}"):
-                logger.warning(f"Cannot afford {building_type.value}")
+            building = purchase_building(self.farm, building_type, (grid_x, grid_y))
+            if building is None:
                 return
-            
-            # Create building model
-            building = Building(
-                type=building_type,
-                position=(grid_x, grid_y),
-            )
-            self.farm.add_building(building)
-            
-            # Mark tiles as occupied
+
             self._iso_view.grid.mark_building(building.id, grid_x, grid_y, width, height)
-            
-            # Create pen sprite
-            pen_sprite = PenSprite(
-                world_x=float(grid_x),
-                world_y=float(grid_y),
-                pen_width=width,
-                pen_height=height,
-            )
-            pen_sprite.building_id = building.id  # Set building ID for click detection
-            self._iso_view.add_sprite(f"building_{building.id}", pen_sprite)
-            self._building_sprites[building.id] = pen_sprite
-            
+            if self._sprites:
+                self._sprites.add_building_sprite(building, width, height)
             logger.info(f"Placed {building_type.value} at ({grid_x}, {grid_y})")
         
         # Exit placement mode
@@ -998,10 +598,10 @@ class MainWindow(QMainWindow):
     
     def _start_decoration_placement_mode(self, decoration_type: DecorationType) -> None:
         """Start decoration placement mode."""
-        self._placement_mode = True
-        self._placement_decoration_type = decoration_type
-        self._placement_building_type = None  # Clear building type
-        self._placement_direction = Direction.EAST  # Reset direction (EAST = default, WEST = flipped)
+        self._placement.active = True
+        self._placement.decoration_type = decoration_type
+        self._placement.building_type = None  # Clear building type
+        self._placement.direction = Direction.EAST  # Reset direction (EAST = default, WEST = flipped)
         
         # Get footprint
         footprint = DECORATION_FOOTPRINTS.get(decoration_type, (1, 1))
@@ -1009,22 +609,19 @@ class MainWindow(QMainWindow):
         can_rotate = info.get("can_rotate", False)
         
         # Terse format with direction info
-        facing_label = "→ Right" if self._placement_direction == Direction.EAST else "← Left (Flipped)"
+        facing_label = "→ Right" if self._placement.direction == Direction.EAST else "← Left (Flipped)"
         if can_rotate:
-            self.placement_label.setText(
+            label_text = (
                 f"📍 Placing: {info.get('name', decoration_type.value)}\n"
                 f"Facing: {facing_label}\n"
                 f"Press R to flip • ESC to cancel"
             )
         else:
-            self.placement_label.setText(
+            label_text = (
                 f"📍 Placing: {info.get('name', decoration_type.value)}\n"
                 f"Click to place • ESC to cancel"
             )
-        self.placement_label.show()
-        self.shop_btn.hide()
-        self.market_btn.hide()
-        self.cancel_btn.show()
+        self.side_panel.set_placement_mode(True, label_text)
         
         # Show placement preview with grid
         if self._iso_view is not None:
@@ -1034,68 +631,69 @@ class MainWindow(QMainWindow):
     
     def _rotate_placement(self) -> None:
         """Rotate the current placement by 90 degrees."""
-        if not self._placement_mode:
+        if not self._placement.active:
             return
         
-        if self._placement_decoration_type is not None:
-            info = DECORATION_INFO.get(self._placement_decoration_type, {})
+        if self._placement.decoration_type is not None:
+            info = DECORATION_INFO.get(self._placement.decoration_type, {})
             if not info.get("can_rotate", False):
                 return
             
             # Toggle between EAST (default) and WEST (flipped)
-            if self._placement_direction == Direction.EAST:
-                self._placement_direction = Direction.WEST
+            if self._placement.direction == Direction.EAST:
+                self._placement.direction = Direction.WEST
             else:
-                self._placement_direction = Direction.EAST
+                self._placement.direction = Direction.EAST
             
             # Update preview text
-            footprint = DECORATION_FOOTPRINTS.get(self._placement_decoration_type, (1, 1))
-            facing_label = "→ Right" if self._placement_direction == Direction.EAST else "← Left (Flipped)"
+            footprint = DECORATION_FOOTPRINTS.get(self._placement.decoration_type, (1, 1))
+            facing_label = "→ Right" if self._placement.direction == Direction.EAST else "← Left (Flipped)"
             
-            self.placement_label.setText(
-                f"📍 Placing: {info.get('name', self._placement_decoration_type.value)}\n"
+            self.side_panel.set_placement_mode(
+                True,
+                f"📍 Placing: {info.get('name', self._placement.decoration_type.value)}\n"
                 f"Facing: {facing_label}\n"
-                f"Press R to flip • ESC to cancel"
+                f"Press R to flip • ESC to cancel",
             )
             
-            logger.debug(f"Flipped to {self._placement_direction.name}")
+            logger.debug(f"Flipped to {self._placement.direction.name}")
     
     def _place_decoration(self, grid_x: int, grid_y: int) -> None:
         """Place a decoration at the specified location."""
         if self.farm is None or self._iso_view is None or self._iso_view.grid is None:
             return
         
-        if self._placement_decoration_type is None:
+        if self._placement.decoration_type is None:
             return
         
-        decoration_type = self._placement_decoration_type
+        decoration_type = self._placement.decoration_type
         footprint = DECORATION_FOOTPRINTS.get(decoration_type, (1, 1))
         
         # Adjust footprint for rotation
-        if self._placement_direction in (Direction.EAST, Direction.WEST):
+        if self._placement.direction in (Direction.EAST, Direction.WEST):
             width, height = footprint[1], footprint[0]
         else:
             width, height = footprint
         
         # Check if we're in move mode
-        is_move_mode = self._move_decoration_id is not None
+        is_move_mode = self._placement.move_decoration_id is not None
         
         # For move mode, clear old tiles first
         if is_move_mode:
-            decoration = self.farm.decorations.get(self._move_decoration_id)
+            decoration = self.farm.decorations.get(self._placement.move_decoration_id)
             if decoration:
-                self._iso_view.grid.clear_building(self._move_decoration_id)
+                self._iso_view.grid.clear_building(self._placement.move_decoration_id)
         
         # Check if we can place here
         if not self._iso_view.grid.can_place_building(grid_x, grid_y, width, height):
             logger.warning(f"Cannot place decoration at ({grid_x}, {grid_y})")
             # Restore old tiles if in move mode
             if is_move_mode:
-                decoration = self.farm.decorations.get(self._move_decoration_id)
+                decoration = self.farm.decorations.get(self._placement.move_decoration_id)
                 if decoration:
                     old_w, old_h = decoration.rotated_footprint
                     self._iso_view.grid.mark_building(
-                        self._move_decoration_id,
+                        self._placement.move_decoration_id,
                         decoration.position[0], decoration.position[1],
                         old_w, old_h
                     )
@@ -1103,56 +701,28 @@ class MainWindow(QMainWindow):
         
         if is_move_mode:
             # === MOVE EXISTING DECORATION ===
-            decoration = self.farm.decorations.get(self._move_decoration_id)
+            decoration = self.farm.decorations.get(self._placement.move_decoration_id)
             if decoration is None:
                 return
-            
-            # Update position and direction
+
             decoration.position = (grid_x, grid_y)
-            decoration.direction = self._placement_direction
-            
-            # Mark new tiles
+            decoration.direction = self._placement.direction
             self._iso_view.grid.mark_building(decoration.id, grid_x, grid_y, width, height)
-            
-            # Update sprite
-            deco_sprite = self._decoration_sprites.get(decoration.id)
-            if deco_sprite:
-                deco_sprite.set_world_pos(float(grid_x), float(grid_y))
-                deco_sprite.set_direction(self._placement_direction)
-            
+            if self._sprites:
+                self._sprites.move_decoration_sprite(decoration, grid_x, grid_y)
             logger.info(f"Moved {decoration.display_name} to ({grid_x}, {grid_y})")
-            self._move_decoration_id = None
+            self._placement.move_decoration_id = None
         else:
             # === CREATE NEW DECORATION ===
-            cost = DECORATION_COSTS.get(decoration_type, 100)
-            if not self.farm.spend_money(cost, f"Purchase {decoration_type.value}"):
-                logger.warning(f"Cannot afford {decoration_type.value}")
+            decoration = purchase_decoration(
+                self.farm, decoration_type, (grid_x, grid_y), self._placement.direction
+            )
+            if decoration is None:
                 return
-            
-            # Create decoration model
-            decoration = Decoration(
-                type=decoration_type,
-                position=(grid_x, grid_y),
-                direction=self._placement_direction,
-            )
-            self.farm.add_decoration(decoration)
-            
-            # Mark tiles as occupied
+
             self._iso_view.grid.mark_building(decoration.id, grid_x, grid_y, width, height)
-            
-            # Create sprite
-            deco_sprite = DecorationSprite(
-                world_x=float(grid_x),
-                world_y=float(grid_y),
-                decoration_type=decoration_type,
-                direction=self._placement_direction,
-                footprint_width=width,
-                footprint_height=height,
-            )
-            deco_sprite.decoration_id = decoration.id
-            self._iso_view.add_sprite(f"decoration_{decoration.id}", deco_sprite)
-            self._decoration_sprites[decoration.id] = deco_sprite
-            
+            if self._sprites:
+                self._sprites.add_decoration_sprite(decoration, width, height)
             logger.info(f"Placed {decoration_type.value} at ({grid_x}, {grid_y})")
         
         # Exit placement mode
@@ -1168,60 +738,15 @@ class MainWindow(QMainWindow):
         """Add an animal to a specific building."""
         if self.farm is None or self._iso_view is None:
             return
-        
+
+        animal = purchase_animal(self.farm, animal_type, building_id)
+        if animal is None:
+            return
+
         building = self.farm.buildings.get(building_id)
-        if not building:
-            logger.warning(f"Building {building_id} not found")
-            return
-        
-        # Check building can accept this animal
-        if not building.can_add_animal(animal_type):
-            logger.warning(f"Building cannot accept {animal_type.value}")
-            return
-        
-        # Check affordability
-        cost = ANIMAL_PURCHASE_PRICES.get(animal_type, 100)
-        if not self.farm.spend_money(cost, f"Purchase {animal_type.value}"):
-            logger.warning(f"Cannot afford {animal_type.value}")
-            return
-        
-        # Create animal model
-        animal = Animal(type=animal_type, building_id=building_id)
-        self.farm.add_animal(animal)
-        building.add_animal(animal.id)
-        
-        # Get pen sprite for bounds
-        pen_sprite = self._building_sprites.get(building_id)
-        if pen_sprite:
-            bounds = pen_sprite.get_animal_bounds()
-            
-            # Random position within pen
-            import random
-            start_x = random.uniform(bounds[0], bounds[2])
-            start_y = random.uniform(bounds[1], bounds[3])
-        else:
-            # Fallback to building center
-            start_x, start_y = building.center_position
-        
-        # Create animal sprite with wandering
-        animal_sprite = AnimalSprite(
-            world_x=start_x,
-            world_y=start_y,
-            animal_type=animal_type.value,
-            animal_id=animal.id,
-        )
-        
-        # Set growth stage from animal model
-        animal_sprite.growth_stage = animal.growth_stage.value
-        
-        # Set pen bounds for wandering
-        if pen_sprite:
-            bounds = pen_sprite.get_animal_bounds()
-            animal_sprite.set_pen_bounds(bounds[0], bounds[1], bounds[2], bounds[3])
-        
-        self._iso_view.add_sprite(f"animal_{animal.id}", animal_sprite)
-        self._animal_sprites[animal.id] = animal_sprite
-        
+        fallback = tuple(building.center_position) if building else None
+        if self._sprites:
+            self._sprites.add_animal_sprite(animal, building_id, fallback_pos=fallback)
         logger.info(f"Added {animal_type.value} to building {building_id}")
         
         # Update UI
@@ -1298,10 +823,8 @@ class MainWindow(QMainWindow):
         logger.info(f"💰 Sold animal {animal_id} for ${sale_value}!")
         
         # Remove animal sprite
-        if animal_id in self._animal_sprites:
-            sprite = self._animal_sprites.pop(animal_id)
-            if self._iso_view:
-                self._iso_view.remove_sprite(f"animal_{animal_id}")
+        if self._sprites:
+            self._sprites.remove_animal_sprite(animal_id)
         
         # Update UI
         self._update_ui()
@@ -1315,7 +838,7 @@ class MainWindow(QMainWindow):
         from ..data.account_manager import get_account_manager
         
         # Don't allow if already visiting
-        if self._visiting_friend:
+        if self._visit.active:
             return
         
         account_manager = get_account_manager()
@@ -1346,10 +869,10 @@ class MainWindow(QMainWindow):
         logger.info(f"Visiting farm: {username}")
         
         # Store home farm and current unlocked zones
-        self._home_farm = self.farm
-        self._home_unlocked_zones = self._iso_view.grid.unlocked_zones
-        self._visiting_friend = True
-        self._visiting_username = username
+        self._visit.home_farm = self.farm
+        self._visit.home_unlocked_zones = self._iso_view.grid.unlocked_zones
+        self._visit.active = True
+        self._visit.username = username
         
         # Load friend's farm
         try:
@@ -1361,12 +884,9 @@ class MainWindow(QMainWindow):
             
             # Clear all building markers from grid (important for placement checks)
             self._iso_view.grid.clear_all_buildings()
-            
-            # Clear existing sprites
-            self._clear_all_sprites()
-            
-            # Recreate sprites for friend's farm
-            self._recreate_sprites_from_save()
+            if self._sprites:
+                self._sprites.clear_all()
+                self._sprites.recreate_from_save(friend_farm)
             
             # Update UI for visit mode
             self._enter_visit_mode(username)
@@ -1374,53 +894,37 @@ class MainWindow(QMainWindow):
             logger.info(f"Now visiting {username}'s farm with {friend_farm.unlocked_zones} unlocked zones")
         except Exception as e:
             logger.error(f"Failed to load friend's farm: {e}")
-            self._home_farm = None
-            self._visiting_friend = False
-            self._visiting_username = None
+            self._visit.reset()
     
     def _enter_visit_mode(self, username: str) -> None:
         """Enter visit mode UI."""
         # Update title
         self.setWindowTitle(f"Visiting {username}'s Farm - Anki Animal Ranch")
         
-        # Update header
-        if hasattr(self, 'header_label'):
-            self.header_label.setText(f"👥 Visiting: {username}")
-        
         # Hide normal buttons, show return home
-        self.shop_btn.hide()
-        self.market_btn.hide()
-        self.visit_btn.hide()
-        self.return_home_btn.show()
-        
-        # Update money display to show "Viewing"
-        if hasattr(self, 'money_label'):
-            self.money_label.setText("👀 View Only")
+        self.side_panel.set_visit_mode(True)
     
     def _on_return_home_clicked(self) -> None:
         """Return to home farm from visit."""
-        if not self._visiting_friend or self._home_farm is None:
+        if not self._visit.active or self._visit.home_farm is None:
             return
         
         logger.info("Returning home from visit")
         
         # Restore home farm
-        self.farm = self._home_farm
-        self._home_farm = None
-        self._visiting_friend = False
-        self._visiting_username = None
-        
+        self.farm = self._visit.home_farm
+
         # Restore home farm's unlocked zones
-        if hasattr(self, '_home_unlocked_zones'):
-            self._iso_view.grid.unlocked_zones = self._home_unlocked_zones
-            self._home_unlocked_zones = None
+        if self._visit.home_unlocked_zones is not None:
+            self._iso_view.grid.unlocked_zones = self._visit.home_unlocked_zones
+
+        self._visit.reset()
         
         # Clear all building markers from grid (important for placement checks)
         self._iso_view.grid.clear_all_buildings()
-        
-        # Clear and recreate sprites
-        self._clear_all_sprites()
-        self._recreate_sprites_from_save()
+        if self._sprites:
+            self._sprites.clear_all()
+            self._sprites.recreate_from_save(self.farm)
         
         # Exit visit mode UI
         self._exit_visit_mode()
@@ -1430,38 +934,11 @@ class MainWindow(QMainWindow):
         # Restore title
         self.setWindowTitle(f"Anki Animal Ranch v{VERSION}")
         
-        # Restore header
-        if hasattr(self, 'header_label'):
-            self.header_label.setText("🌾 Anki Animal Ranch")
-        
         # Show normal buttons
-        self.shop_btn.show()
-        self.market_btn.show()
-        self.visit_btn.show()
-        self.return_home_btn.hide()
+        self.side_panel.set_visit_mode(False)
         
         # Update UI
         self._update_ui()
-    
-    def _clear_all_sprites(self) -> None:
-        """Clear all entity sprites from the view."""
-        if self._iso_view is None:
-            return
-        
-        # Remove building sprites
-        for building_id, sprite in list(self._building_sprites.items()):
-            self._iso_view.remove_sprite(f"building_{building_id}")
-        self._building_sprites.clear()
-        
-        # Remove animal sprites
-        for animal_id, sprite in list(self._animal_sprites.items()):
-            self._iso_view.remove_sprite(f"animal_{animal_id}")
-        self._animal_sprites.clear()
-        
-        # Remove decoration sprites
-        for deco_id, sprite in list(self._decoration_sprites.items()):
-            self._iso_view.remove_sprite(f"decoration_{deco_id}")
-        self._decoration_sprites.clear()
     
     def _sync_farm_to_cloud(self) -> None:
         """Sync current farm to cloud (if account exists)."""
@@ -1469,7 +946,7 @@ class MainWindow(QMainWindow):
         from ..network import sync_farm, is_online_available
         
         # Don't sync while visiting
-        if self._visiting_friend:
+        if self._visit.active:
             return
         
         account_manager = get_account_manager()
@@ -1511,17 +988,16 @@ class MainWindow(QMainWindow):
         
         logger.debug(f"Production event: {product_type} x{quantity} from {animal_id}")
         
-        # Get animal sprite and show production effect
-        if animal_id and animal_id in self._animal_sprites and self._iso_view:
-            sprite = self._animal_sprites[animal_id]
-            
-            # Show floating effect at animal's position
-            product_name = product_type.value if hasattr(product_type, 'value') else str(product_type)
-            self._iso_view.show_production_effect(
-                world_x=sprite.world_x,
-                world_y=sprite.world_y,
-                product_type=product_name,
-            )
+        # Show floating effect at animal's position
+        if animal_id and self._sprites and self._iso_view:
+            sprite = self._sprites.get_animal_sprite(animal_id)
+            if sprite:
+                product_name = product_type.value if hasattr(product_type, 'value') else str(product_type)
+                self._iso_view.show_production_effect(
+                    world_x=sprite.world_x,
+                    world_y=sprite.world_y,
+                    product_type=product_name,
+                )
         
         # Update UI immediately
         self._update_ui()
@@ -1541,58 +1017,6 @@ class MainWindow(QMainWindow):
             ease: Simulated ease button (1-4)
         """
         self.on_card_answered(ease)
-    
-    def _on_study_clicked(self) -> None:
-        """Handle study button click - simulates passing 1 hour of game time."""
-        if self.time_system is None or self.farm is None:
-            return
-        
-        # Advance 1 hour of game time
-        self.time_system.advance_time(hours=1)
-        
-        # Update growth system
-        if self.growth_system is not None:
-            events = self.growth_system.update(hours_passed=1.0)
-            
-            # Show feedback for events
-            for event in events:
-                if event["type"] == "product_produced":
-                    logger.info(
-                        f"🥚 {event['animal_type'].capitalize()} produced "
-                        f"{event['quantity']} {event['product_type']}!"
-                    )
-                elif event["type"] == "growth_stage_changed":
-                    logger.info(
-                        f"🌱 {event['animal_type'].capitalize()} grew from "
-                        f"{event['old_stage']} to {event['new_stage']}!"
-                    )
-                    # Update the sprite's growth stage
-                    animal_id = event.get("animal_id")
-                    logger.info(f"  Looking for sprite: animal_id={animal_id}, in_dict={animal_id in self._animal_sprites}")
-                    if animal_id and animal_id in self._animal_sprites:
-                        logger.info(f"  Found sprite, setting growth_stage to {event['new_stage']}")
-                        self._animal_sprites[animal_id].growth_stage = event["new_stage"]
-                    else:
-                        logger.warning(f"  Sprite not found for animal_id={animal_id}")
-        
-        # Log animal status summary
-        if self.farm.animals:
-            for animal in list(self.farm.animals.values())[:3]:  # Show first 3
-                logger.debug(
-                    f"  {animal.type.value}: {animal.maturity:.0%} mature, "
-                    f"stage={animal.growth_stage.value}, "
-                    f"can_produce={animal.is_mature}"
-                )
-        
-        # Auto-save every 25 time advances (TimeSystem tracks the count)
-        if self.time_system.total_cards_answered % 25 == 0:
-            self.save_game()
-            logger.info(f"💾 Auto-saved after {self.time_system.total_cards_answered} study clicks")
-        
-        # Update UI
-        self._update_ui()
-        
-        logger.info(f"⏰ Advanced 1 hour: {self.time_system.current_time.format_full()}")
     
     # =========================================================================
     # Public API
@@ -1637,17 +1061,11 @@ class MainWindow(QMainWindow):
                     )
                 elif event["type"] == "growth_stage_changed":
                     logger.info(
-                        f"🌱 {event['animal_type'].capitalize()} grew to "
-                        f"{event['new_stage']}!"
+                        f"🌱 {event['animal_type'].capitalize()} grew to {event['new_stage']}!"
                     )
-                    # Update the sprite's growth stage
                     animal_id = event.get("animal_id")
-                    logger.info(f"  Looking for sprite: animal_id={animal_id}, in_dict={animal_id in self._animal_sprites}")
-                    if animal_id and animal_id in self._animal_sprites:
-                        logger.info(f"  Found sprite, setting growth_stage to {event['new_stage']}")
-                        self._animal_sprites[animal_id].growth_stage = event["new_stage"]
-                    else:
-                        logger.warning(f"  Sprite not found for animal_id={animal_id}")
+                    if animal_id and self._sprites:
+                        self._sprites.update_animal_growth_stage(animal_id, event["new_stage"])
         
         # Auto-save every 25 cards (TimeSystem tracks the count)
         if self.time_system.total_cards_answered % 25 == 0:
@@ -1684,7 +1102,7 @@ class MainWindow(QMainWindow):
             return
         
         # Don't save while visiting friend's farm
-        if self._visiting_friend:
+        if self._visit.active:
             return
         
         # Sync card count from time_system to farm stats before saving
@@ -1723,111 +1141,6 @@ class MainWindow(QMainWindow):
         
         logger.info(f"📂 Game loaded! (${self.farm.money}, {len(self.farm.animals)} animals)")
     
-    def _recreate_sprites_from_save(self) -> None:
-        """Recreate sprites for all buildings and animals from loaded save."""
-        if self._iso_view is None or self.farm is None:
-            return
-        
-        from ..core.constants import BUILDING_FOOTPRINTS
-        
-        # Clear existing building and animal sprites
-        for sprite_id in list(self._building_sprites.keys()):
-            self._iso_view.remove_sprite(f"building_{sprite_id}")
-        for sprite_id in list(self._animal_sprites.keys()):
-            self._iso_view.remove_sprite(f"animal_{sprite_id}")
-        
-        self._building_sprites.clear()
-        self._animal_sprites.clear()
-        
-        # Recreate building sprites
-        for building_id, building in self.farm.buildings.items():
-            footprint = BUILDING_FOOTPRINTS.get(building.type, (2, 2))
-            width, height = footprint
-            
-            pen_sprite = PenSprite(
-                world_x=float(building.position[0]),
-                world_y=float(building.position[1]),
-                pen_width=width,
-                pen_height=height,
-            )
-            pen_sprite.building_id = building_id  # Set building ID for click detection
-            self._iso_view.add_sprite(f"building_{building_id}", pen_sprite)
-            self._building_sprites[building_id] = pen_sprite
-            
-            # Mark tiles as occupied
-            if self._iso_view.grid:
-                self._iso_view.grid.mark_building(
-                    building_id,
-                    building.position[0],
-                    building.position[1],
-                    width,
-                    height,
-                )
-        
-        # Recreate animal sprites
-        import random
-        for animal_id, animal in self.farm.animals.items():
-            # Get pen bounds from building
-            pen_sprite = self._building_sprites.get(animal.building_id)
-            if pen_sprite:
-                bounds = pen_sprite.get_animal_bounds()
-                start_x = random.uniform(bounds[0], bounds[2])
-                start_y = random.uniform(bounds[1], bounds[3])
-            else:
-                start_x, start_y = animal.position
-            
-            animal_sprite = AnimalSprite(
-                world_x=start_x,
-                world_y=start_y,
-                animal_type=animal.type.value,
-                animal_id=animal.id,
-            )
-            
-            # Set growth stage from animal model
-            animal_sprite.growth_stage = animal.growth_stage.value
-            
-            # Set pen bounds for wandering
-            if pen_sprite:
-                bounds = pen_sprite.get_animal_bounds()
-                animal_sprite.set_pen_bounds(bounds[0], bounds[1], bounds[2], bounds[3])
-            
-            self._iso_view.add_sprite(f"animal_{animal_id}", animal_sprite)
-            self._animal_sprites[animal_id] = animal_sprite
-        
-        # Clear and recreate decoration sprites
-        for sprite_id in list(self._decoration_sprites.keys()):
-            self._iso_view.remove_sprite(f"decoration_{sprite_id}")
-        self._decoration_sprites.clear()
-        
-        # Recreate decoration sprites
-        for decoration_id, decoration in self.farm.decorations.items():
-            footprint = decoration.rotated_footprint
-            width, height = footprint
-            
-            deco_sprite = DecorationSprite(
-                world_x=float(decoration.position[0]),
-                world_y=float(decoration.position[1]),
-                decoration_type=decoration.type,
-                direction=decoration.direction,
-                footprint_width=width,
-                footprint_height=height,
-            )
-            deco_sprite.decoration_id = decoration_id
-            self._iso_view.add_sprite(f"decoration_{decoration_id}", deco_sprite)
-            self._decoration_sprites[decoration_id] = deco_sprite
-            
-            # Mark tiles as occupied
-            if self._iso_view.grid:
-                self._iso_view.grid.mark_building(
-                    decoration_id,
-                    decoration.position[0],
-                    decoration.position[1],
-                    width,
-                    height,
-                )
-        
-        logger.info(f"Recreated {len(self._building_sprites)} buildings, {len(self._animal_sprites)} animals, {len(self._decoration_sprites)} decorations")
-    
     # =========================================================================
     # Event Handlers
     # =========================================================================
@@ -1849,12 +1162,12 @@ class MainWindow(QMainWindow):
     def keyPressEvent(self, event: QKeyEvent) -> None:
         """Handle key press events."""
         if event.key() == Qt.Key.Key_Escape:
-            if self._placement_mode:
+            if self._placement.active:
                 self._cancel_placement_mode()
                 event.accept()
                 return
         elif event.key() == Qt.Key.Key_R:
-            if self._placement_mode:
+            if self._placement.active:
                 self._rotate_placement()
                 event.accept()
                 return

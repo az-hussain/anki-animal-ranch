@@ -9,10 +9,11 @@ from enum import Enum, auto
 from typing import Final
 
 # =============================================================================
-# VERSION
+# VERSION — derived from changelog.py (first key = current version)
 # =============================================================================
 
-VERSION: Final[str] = "0.3.0"
+from .changelog import CHANGELOG
+VERSION: Final[str] = next(iter(CHANGELOG))
 
 # =============================================================================
 # DISPLAY SETTINGS
@@ -237,6 +238,13 @@ PRODUCT_BASE_PRICES: Final[dict[ProductType, int]] = {
     ProductType.MILK: 35,
 }
 
+# Freshness decay rates per game hour (1.0 / rate = hours to fully spoil)
+PRODUCT_FRESHNESS_DECAY_RATES: Final[dict[str, float]] = {
+    "egg": 0.02,      # ~50 hours to spoil
+    "milk": 0.04,     # ~25 hours to spoil
+    "truffle": 0.01,  # ~100 hours to spoil
+}
+
 # Quality multipliers
 PRODUCT_QUALITY_MULTIPLIERS: Final[dict[ProductQuality, float]] = {
     ProductQuality.BASIC: 1.0,
@@ -253,9 +261,6 @@ HEALTH_QUALITY_THRESHOLDS: Final[dict[ProductQuality, float]] = {
     ProductQuality.BASIC: 0.0,     # Below 60%   → ⭐
 }
 
-# Legacy alias for backwards compatibility
-QUALITY_CARE_THRESHOLDS: Final[dict[ProductQuality, float]] = HEALTH_QUALITY_THRESHOLDS
-
 # =============================================================================
 # BUILDINGS
 # =============================================================================
@@ -265,10 +270,11 @@ class BuildingType(Enum):
     COOP = "coop"           # For chickens
     PIGSTY = "pigsty"       # For pigs
     BARN = "barn"           # For cows
-    FARMHOUSE = "farmhouse" # Player home
-    SILO = "silo"           # Feed storage
-    MARKET_STALL = "market_stall"  # On-site selling
-    TRUCK_DEPOT = "truck_depot"    # Vehicle storage
+    # Future stubs — no sprites, no shop entries, not yet usable:
+    FARMHOUSE = "farmhouse"        # Player home (future)
+    SILO = "silo"                  # Feed storage (future)
+    MARKET_STALL = "market_stall"  # On-site selling (future)
+    TRUCK_DEPOT = "truck_depot"    # Vehicle storage (future)
 
 
 # Maximum upgrade level for buildings
@@ -410,6 +416,29 @@ DECORATION_FOOTPRINTS: Final[dict[DecorationType, tuple[int, int]]] = {
     DecorationType.SIGNPOST: (1, 1),
 }
 
+# Building display info (name, emoji, description, animal_type)
+# canonical source of truth for all UI that shows building metadata
+BUILDING_DISPLAY_INFO: Final[dict[str, dict]] = {
+    "coop": {
+        "name": "Chicken Coop",
+        "emoji": "🐔",
+        "description": "Houses chickens. They produce eggs!",
+        "animal_type": "chicken",
+    },
+    "pigsty": {
+        "name": "Pig Sty",
+        "emoji": "🐷",
+        "description": "Houses pigs. They find truffles!",
+        "animal_type": "pig",
+    },
+    "barn": {
+        "name": "Cow Barn",
+        "emoji": "🐄",
+        "description": "Houses cows. They produce milk!",
+        "animal_type": "cow",
+    },
+}
+
 # Decoration display info (name, emoji, can_rotate)
 DECORATION_INFO: Final[dict[DecorationType, dict]] = {
     # Nature & Plants
@@ -458,7 +487,9 @@ SEASON_ORDER: Final[list[Season]] = [
     Season.WINTER,
 ]
 
-# Seasonal modifiers
+# Seasonal modifiers — DEFINED but NOT YET APPLIED in game logic.
+# TODO: Apply SEASON_PRODUCTION_MODIFIERS in systems/growth_system.py _produce()
+# TODO: Apply SEASON_PRICE_MODIFIERS in services/pricing.py product_unit_price()
 SEASON_PRODUCTION_MODIFIERS: Final[dict[Season, float]] = {
     Season.SPRING: 1.1,   # Breeding season bonus
     Season.SUMMER: 1.0,
