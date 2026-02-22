@@ -9,6 +9,10 @@ from typing import Final
 # Changelog entries: version -> list of changes
 # Add new versions at the TOP of this dict
 CHANGELOG: Final[dict[str, list[str]]] = {
+    "0.4.0": [
+        "Added Settings menu with Reset Farm option — start fresh without reinstalling",
+        "Major battery improvements: the game is now ~50% more efficient while you're playing, ~90% more efficient when you're studying with the farm open on the side, and nearly idle when minimized",
+    ],
     "0.3.0": [
         "Season was stuck in Spring, time progression now fixed",
         "Fixed 'Sell All' bug: quality products now give correct money on sale (shout out to @adsharma and @Iloveanki67 for reporting)",

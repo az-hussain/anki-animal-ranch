@@ -41,7 +41,7 @@ ZOOM_STEP: Final[float] = 0.1
 CAMERA_PAN_SPEED: Final[int] = 10  # Pixels per frame when edge scrolling
 
 # Animation
-TARGET_FPS: Final[int] = 60
+TARGET_FPS: Final[int] = 30
 FRAME_TIME_MS: Final[int] = 1000 // TARGET_FPS
 ANIMATION_SPEED: Final[float] = 1.0  # Multiplier for animation playback
 

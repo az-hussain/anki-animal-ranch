@@ -10,9 +10,10 @@ from __future__ import annotations
 from ..utils.logger import get_logger
 from typing import TYPE_CHECKING
 
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import QEvent, Qt, QTimer
 from PyQt6.QtGui import QCloseEvent, QKeyEvent
 from PyQt6.QtWidgets import (
+    QApplication,
     QHBoxLayout,
     QMainWindow,
     QWidget,
@@ -23,7 +24,6 @@ from ..core.constants import (
     DECORATION_INFO,
     DEFAULT_WINDOW_HEIGHT,
     DEFAULT_WINDOW_WIDTH,
-    FRAME_TIME_MS,
     MIN_WINDOW_HEIGHT,
     MIN_WINDOW_WIDTH,
     VERSION,
@@ -81,11 +81,7 @@ class MainWindow(QMainWindow):
         
         # Rendering
         self._iso_view: IsometricView | None = None
-        
-        # Game loop timer
-        self._game_timer: QTimer | None = None
-        self._is_running = False
-        
+
         # Placement and visit state
         self._placement = PlacementState()
         self._visit = VisitState()
@@ -198,13 +194,14 @@ class MainWindow(QMainWindow):
             # Center view on first zone
             self._iso_view.fit_view_to_unlocked()
         
-        # Set up game loop timer
-        self._game_timer = QTimer(self)
-        self._game_timer.timeout.connect(self._game_tick)
-        
+        # Throttle animation when the app loses focus
+        app = QApplication.instance()
+        if app is not None:
+            app.applicationStateChanged.connect(self._on_app_state_changed)
+
         # Update UI with initial state
         self._update_ui()
-        
+
         logger.info("Game systems initialized")
     
     def _check_for_changelog(self) -> None:
@@ -239,14 +236,6 @@ class MainWindow(QMainWindow):
         
         # Update the last seen version
         save_manager.update_last_seen_version(VERSION)
-    
-    def _game_tick(self) -> None:
-        """Main game loop tick (called every frame)."""
-        if not self._is_running or self.farm is None:
-            return
-        
-        # Update UI
-        self._update_ui()
     
     def _update_ui(self) -> None:
         """Update all HUD elements to reflect current game state."""
@@ -977,8 +966,30 @@ class MainWindow(QMainWindow):
     
     def _on_settings_clicked(self) -> None:
         """Handle settings button click."""
-        logger.info("Settings clicked")
-        # TODO: Open settings dialog
+        from .dialogs import SettingsDialog
+        dialog = SettingsDialog(self)
+        dialog.farm_reset.connect(self._reset_farm)
+        dialog.exec()
+
+    def _reset_farm(self) -> None:
+        """Reset the farm to a blank state."""
+        farm_name = self.farm.name if self.farm else "My Ranch"
+
+        self.farm = Farm.create_new(name=farm_name)
+        self.time_system = TimeSystem(total_cards=0)
+        self.growth_system = GrowthSystem(self.farm)
+
+        if self._iso_view and self._iso_view.grid:
+            self._iso_view.grid.unlocked_zones = 1
+            self._iso_view.grid.clear_all_buildings()
+
+        if self._sprites:
+            self._sprites.clear_all()
+
+        self.save_game()
+        self._update_ui()
+
+        logger.info("Farm reset to blank state")
     
     def _on_animal_produced(self, **kwargs) -> None:
         """Handle animal production event for visual feedback."""
@@ -1078,22 +1089,15 @@ class MainWindow(QMainWindow):
         logger.debug(f"Card answered with ease {ease}, {hours_passed}h passed")
     
     def start_game(self) -> None:
-        """Start the game loop."""
-        if self._is_running:
-            return
-        
-        self._is_running = True
-        if self._game_timer:
-            self._game_timer.start(FRAME_TIME_MS)
-        
+        """Resume animation (called when the window becomes visible)."""
+        if self._iso_view:
+            self._iso_view.start_animation()
         logger.info("Game started")
-    
+
     def pause_game(self) -> None:
-        """Pause the game loop."""
-        self._is_running = False
-        if self._game_timer:
-            self._game_timer.stop()
-        
+        """Pause animation (called when the window is hidden)."""
+        if self._iso_view:
+            self._iso_view.stop_animation()
         logger.info("Game paused")
     
     def save_game(self) -> None:
@@ -1158,7 +1162,27 @@ class MainWindow(QMainWindow):
         """Handle window hide event."""
         super().hideEvent(event)
         self.pause_game()
-    
+
+    def changeEvent(self, event: QEvent) -> None:
+        """Pause animation when minimized, resume when restored."""
+        super().changeEvent(event)
+        if event.type() == QEvent.Type.WindowStateChange:
+            if self.windowState() & Qt.WindowState.WindowMinimized:
+                self.pause_game()
+            elif self._iso_view and not self._iso_view._animation_timer.isActive():
+                self.start_game()
+
+    def _on_app_state_changed(self, state: Qt.ApplicationState) -> None:
+        """Throttle to 5 FPS when another app has focus, restore to 30 FPS when focused."""
+        if self._iso_view is None:
+            return
+        if state == Qt.ApplicationState.ApplicationActive:
+            self._iso_view.set_animation_fps(30)
+            logger.debug("App focused — 30 FPS")
+        else:
+            self._iso_view.set_animation_fps(5)
+            logger.debug("App unfocused — 5 FPS")
+
     def keyPressEvent(self, event: QKeyEvent) -> None:
         """Handle key press events."""
         if event.key() == Qt.Key.Key_Escape:
@@ -1177,13 +1201,5 @@ class MainWindow(QMainWindow):
         """Handle window close event."""
         self.pause_game()
         self.save_game()
-        
-        # Clean up
-        if self._game_timer:
-            self._game_timer.stop()
-        
-        if self._iso_view:
-            self._iso_view.stop_animation()
-        
         logger.info("MainWindow closed")
         super().closeEvent(event)

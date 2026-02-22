@@ -118,7 +118,10 @@ class IsometricView(QGraphicsView):
         self._weather_particles: list[dict] = []
         self._weather_timer = QTimer(self)
         self._weather_timer.timeout.connect(self._update_weather)
-        self._weather_timer.start(50)  # Update every 50ms
+        self._weather_timer.start(100)  # Update every 100ms
+
+        # Animation frame counter (for staggered wandering updates)
+        self._frame_count: int = 0
         
         # Configure view
         self._setup_view()
@@ -373,23 +376,35 @@ class IsometricView(QGraphicsView):
     # =========================================================================
     
     def start_animation(self) -> None:
-        """Start the animation timer."""
+        """Start the animation and weather timers at full rate."""
         self._animation_timer.start(FRAME_TIME_MS)
+        self._weather_timer.start(100)
         self._last_tick_time = 0
-    
+
     def stop_animation(self) -> None:
-        """Stop the animation timer."""
-        self._animation_timer.stop()
+        """Stop the animation and weather timers."""
+        if self._animation_timer.isActive():
+            self._animation_timer.stop()
+            self._weather_timer.stop()
+
+    def set_animation_fps(self, fps: int) -> None:
+        """Change the animation rate without stopping/restarting."""
+        if self._animation_timer.isActive():
+            self._animation_timer.setInterval(1000 // fps)
     
     def _on_animation_tick(self) -> None:
         """Called each animation frame."""
+        self._frame_count += 1
+
         # Update all sprites
-        for sprite in self._sprites.values():
+        for i, sprite in enumerate(self._sprites.values()):
             sprite.update_animation(FRAME_TIME_MS)
-            
-            # Update animal wandering
+
+            # Stagger animal wandering: each animal updates every other frame,
+            # alternating which animals update so motion stays smooth.
             if isinstance(sprite, AnimalSprite):
-                sprite.update_wandering(FRAME_TIME_MS)
+                if (i + self._frame_count) % 2 == 0:
+                    sprite.update_wandering(FRAME_TIME_MS * 2)
         
         # Update floating effects
         finished_effects = []
@@ -405,9 +420,13 @@ class IsometricView(QGraphicsView):
         
         # Handle WASD camera panning
         self._handle_keyboard_pan()
-        
+
         # Update camera
         self._camera.update(FRAME_TIME_MS)
+
+        # Force repaint if weather is active (drawForeground needs explicit trigger)
+        if self._weather_particles:
+            self.viewport().update()
     
     # =========================================================================
     # Weather System
@@ -452,7 +471,7 @@ class IsometricView(QGraphicsView):
         import random
         
         viewport_rect = self.viewport().rect()
-        count = 50 if initial else 3  # Spawn more initially, then trickle
+        count = 20 if initial else 2  # Spawn more initially, then trickle
         
         for _ in range(count):
             if self._current_season == Season.SPRING:
@@ -506,11 +525,8 @@ class IsometricView(QGraphicsView):
             self._weather_particles.remove(p)
         
         # Spawn new particles
-        if len(self._weather_particles) < 80:
+        if len(self._weather_particles) < 40:
             self._spawn_weather_particles(initial=False)
-        
-        # Trigger repaint
-        self.viewport().update()
     
     def drawForeground(self, painter: QPainter, rect: QRectF) -> None:
         """Draw weather effects on top of everything."""
