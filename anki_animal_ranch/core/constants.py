@@ -171,9 +171,9 @@ ANIMAL_BASE_SALE_PRICES: Final[dict[AnimalType, int]] = {
 # Growth rate (maturity gained per game hour with perfect care)
 # Balanced so: Chicken ~1000 cards, Pig ~1500 cards, Cow ~2100 cards to adult
 ANIMAL_GROWTH_RATES: Final[dict[AnimalType, float]] = {
-    AnimalType.CHICKEN: 0.040,  # ~16.5 hours to adult (~1000 cards)
-    AnimalType.PIG: 0.027,      # ~24.4 hours to adult (~1500 cards)
-    AnimalType.COW: 0.019,      # ~34.7 hours to adult (~2100 cards)
+    AnimalType.CHICKEN: 0.060,  # ~16.67 hours to adult (~1000 cards)
+    AnimalType.PIG: 0.040,      # ~25 hours to adult (~1500 cards)
+    AnimalType.COW: 0.028,      # ~35 hours to adult (~2100 cards)
 }
 
 # Hours between production cycles for mature animals
